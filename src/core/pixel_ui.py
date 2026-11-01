@@ -205,9 +205,10 @@ class PixelMenu(Widget):
         frame(x, y, w, h, bd)
 
         # иконка
-        ix, iy = x + 12, y + (h - 16) // 2
         icon = self.icons[i] if self.icons and i < len(self.icons) else (
             'web' if i == 0 else 'apps')
+        icon_h = 22 if icon in ('usb', 'bt') else 16
+        ix, iy = x + 12, y + (h - icon_h) // 2
         if icon == 'power':
             ssd.vline(ix + 8, iy + 1, 6, fg)
             ssd.hline(ix + 4, iy + 3, 3, fg)
@@ -216,6 +217,39 @@ class PixelMenu(Widget):
             ssd.vline(ix + 12, iy + 4, 6, fg)
             ssd.hline(ix + 4, iy + 10, 3, fg)
             ssd.hline(ix + 9, iy + 10, 3, fg)
+        elif icon == 'bt':
+            # Классический рунический значок Bluetooth
+            ssd.line(ix + 8, iy + 1, ix + 8, iy + 20, fg)
+            ssd.line(ix + 8, iy + 1, ix + 12, iy + 6, fg)
+            ssd.line(ix + 12, iy + 6, ix + 4, iy + 15, fg)
+            ssd.line(ix + 8, iy + 20, ix + 12, iy + 15, fg)
+            ssd.line(ix + 12, iy + 15, ix + 4, iy + 6, fg)
+        elif icon == 'usb':
+            # Значок USB: трезубец с треугольной стрелкой сверху,
+            # квадратом на правой ветви и круглыми узлами
+            ssd.hline(ix + 8, iy + 0, 1, fg)
+            ssd.hline(ix + 7, iy + 1, 3, fg)
+            ssd.hline(ix + 6, iy + 2, 5, fg)
+            ssd.hline(ix + 5, iy + 3, 7, fg)
+            ssd.hline(ix + 5, iy + 4, 7, fg)
+            ssd.vline(ix + 8, iy + 4, 15, fg)
+            # правая ветвь
+            ssd.line(ix + 8, iy + 13, ix + 12, iy + 8, fg)
+            ssd.vline(ix + 12, iy + 4, 5, fg)
+            fill(ix + 11, iy + 1, 4, 4, fg)
+            # левая ветвь
+            ssd.line(ix + 8, iy + 16, ix + 4, iy + 11, fg)
+            ssd.hline(ix + 2, iy + 8, 3, fg)
+            ssd.hline(ix + 1, iy + 9, 5, fg)
+            ssd.hline(ix + 1, iy + 10, 5, fg)
+            ssd.hline(ix + 1, iy + 11, 5, fg)
+            ssd.hline(ix + 2, iy + 12, 3, fg)
+            # нижний узел
+            ssd.hline(ix + 7, iy + 17, 3, fg)
+            ssd.hline(ix + 6, iy + 18, 5, fg)
+            ssd.hline(ix + 6, iy + 19, 5, fg)
+            ssd.hline(ix + 6, iy + 20, 5, fg)
+            ssd.hline(ix + 7, iy + 21, 3, fg)
         elif icon == 'web':
             frame(ix, iy, 16, 16, fg)
             ssd.hline(ix + 1, iy + 8, 14, fg)

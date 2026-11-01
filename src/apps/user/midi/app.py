@@ -40,6 +40,9 @@ from core.ui import (
 )
 from core.keyboard_widget import Keyboard
 from core.logger import error
+from core.pixel_ui import (
+    header, footer, screen_bg, PixelMenu, PixelClose,
+)
 
 
 _LONG_MS      = 1200
@@ -2283,40 +2286,36 @@ class PresetConfirmDeleteScreen(Screen):
 class ModeSelectScreen(Screen):
     return_screen = None      # main.py подставит MenuScreen
 
-    _ITEMS = ('Wire / USB', 'BLE / wireless')
+    _ITEMS  = ('USB', 'BLE')
+    _DESC   = ('Cable MIDI', 'Wireless MIDI')
+    _ICONS  = ('usb', 'bt')
 
     def __init__(self):
         super().__init__()
-        ssd.fill(0)
+        self._busy = False
+        screen_bg()
         self.wri = make_writer()
 
-        Label(self.wri, TITLE_Y, TITLE_X, 'MIDI MODE')
-        Label(self.wri, TITLE_Y + _sy(14), TITLE_X,
-              'Wire = cable, BLE = wireless')
+        self._draw_header()
 
-        self.lb = Listbox(
-            self.wri, LB_Y + MIDI_LB_EXTRA, LB_X,
-            elements=list(self._ITEMS),
-            dlines=LB_DLINES - 3,
-            width=LB_WIDTH,
-            bdcolor=LB_BORDER_COLOR,
-            callback=self._on_pick,
+        self.menu = PixelMenu(
+            self.wri, self._ITEMS,
+            top=84, row_h=44, gap=6, kind='cards',
+            icons=self._ICONS, descriptions=self._DESC,
+            on_select=self._pick,
         )
+        self.cb = PixelClose(self.wri, 20, SCREEN_W - 36, self._on_close)
 
-        def _on_close(*_a, **_k):
-            asyncio.create_task(self._do_close())
+        footer('UP/DN', 'MOVE', 'SEL', 'OK')
 
-        self.cb = Button(self.wri, CLOSE_BTN_Y, CLOSE_BTN_X,
-                         text='X', callback=_on_close,
-                         width=CLOSE_BTN_W, height=CLOSE_BTN_H)
-        place_close_btn(self.cb)
+    def _draw_header(self):
+        screen_bg()
+        header('MIDI MODE', '// SELECT MODE')
+        footer('UP/DN', 'MOVE', 'SEL', 'OK')
+        redraw_status_bar()
 
-    def _on_pick(self, lb, *_a):
-        if getattr(self, '_busy', False):
-            return
-        try:
-            idx = lb.value()
-        except Exception:
+    def _pick(self, idx):
+        if self._busy:
             return
         self._busy = True
         asyncio.create_task(self._apply_mode(idx))
@@ -2352,17 +2351,25 @@ class ModeSelectScreen(Screen):
         else:
             Screen.back()
 
+    def _on_close(self):
+        if getattr(self, '_busy', False):
+            return
+        self._busy = True
+        asyncio.create_task(self._do_close())
+
     def after_open(self):
         try:
             super().after_open()
         except Exception:
             pass
-        redraw_status_bar()
-        place_close_btn(self.cb)
+        self._busy = False
+        self._draw_header()
         try:
-            self.lb.value(0 if MidiScreen.mode == 'wire' else 1)
-            self.lb.update()
-            self.lb.enter()
+            self.cb.show()
+        except Exception:
+            pass
+        try:
+            self.move_to(self.menu)
         except Exception as e:
             error("mode focus:", e)
 
