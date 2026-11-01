@@ -87,12 +87,11 @@
   .padbtn:hover{border-color:var(--accent);color:var(--accent)}
   .padbtn.on{border-color:var(--ok);color:var(--ok)}
   .padbtn.flash{border-color:var(--ok);color:var(--ok);background:#0e2a17}
-  #ctlPane[hidden],.surface[hidden]{display:none}
-  .sub{margin-top:0}
-  .surface{display:grid;grid-template-columns:repeat(4,116px);
-    grid-auto-rows:116px;gap:6px;margin-top:10px;touch-action:none;
-    -webkit-user-select:none;user-select:none;
-    justify-content:start}
+  #grid[hidden],#setupPane[hidden],.surface[hidden]{display:none}
+  .surface{--cell:116px;display:grid;grid-template-columns:repeat(8,var(--cell));
+    margin-top:2px;
+    grid-auto-rows:var(--cell);gap:6px;margin-top:10px;touch-action:none;
+    -webkit-user-select:none;user-select:none;justify-content:start}
   .ctl{border:1px solid var(--line);background:var(--panel2);padding:5px;
     box-shadow:inset 0 0 0 1px #000;min-width:0;overflow:hidden}
   .ctl.dragging{opacity:.75;border-color:var(--accent)}
@@ -105,15 +104,18 @@
   .fader-card{display:flex;flex-direction:column;align-items:center;
     justify-content:space-between;gap:3px}
   .pad-card{display:flex;flex-direction:column;gap:3px}
-  .fader{position:relative;width:40px;height:150px;margin:0;
+  .fader{position:relative;width:calc(var(--cell) * 0.34);max-width:84px;
+    height:calc(var(--cell) * 1.2);margin:0;
     touch-action:none;cursor:pointer;-webkit-user-select:none;
     user-select:none}
-  .fader-track{position:absolute;left:13px;top:1px;width:14px;height:148px;
+  .fader-track{position:absolute;left:50%;margin-left:-7px;top:1px;width:14px;
+    height:calc(100% - 2px);
     border:2px solid var(--line2);border-radius:0;background:#000;
-    overflow:hidden}
+    overflow:visible}
   .fader-fill{position:absolute;left:0;bottom:0;width:100%;
     background:var(--accent)}
-  .fader-cap{position:absolute;left:0;width:40px;height:12px;bottom:0;
+  .fader-cap{position:absolute;left:50%;transform:translateX(-50%);
+    width:calc(var(--cell) * 0.34);max-width:84px;height:12px;bottom:0;
     border:0;border-radius:0;background:var(--accent);
     box-shadow:inset 0 0 0 2px #000;pointer-events:none}
   .fader-cap:after{content:"";position:absolute;left:0;right:0;top:5px;
@@ -178,26 +180,22 @@
 
   <nav class="tabs">
     <button class="tab" id="tabPins">PINS</button>
-    <button class="tab on" id="tabCtl">CONTROLS</button>
+    <button class="tab on" id="tabWidgets">WIDGETS</button>
+    <button class="tab" id="tabSetup">SETTINGS</button>
   </nav>
 
   <section class="grid" id="grid" hidden></section>
 
-  <section id="ctlPane">
-    <nav class="tabs sub">
-      <button class="tab on" id="subSurface">SURFACE</button>
-      <button class="tab" id="subSetup">SETTINGS</button>
-    </nav>
+  <section class="surface" id="surfaceWrap"></section>
 
-    <section class="bar" id="addBar" hidden>
+  <section id="setupPane" hidden>
+    <section class="bar" id="addBar">
       <label>ADD</label>
       <button class="btn" data-add="fader">FADER</button>
       <button class="btn" data-add="button">BUTTON</button>
       <button class="btn" data-add="switch">SWITCH</button>
     </section>
-
-    <section class="surface" id="surfaceWrap"></section>
-    <section class="grid" id="ctlGrid" hidden></section>
+    <section class="grid" id="ctlGrid"></section>
   </section>
 </main>
 
@@ -218,15 +216,56 @@ function toast(msg, isErr) {
   toast._t = setTimeout(function () { t.hidden = true; }, 2600);
 }
 
+// The board serves one request at a time, so all calls are serialised.
+var _net = Promise.resolve();
+
+function _send(q, method) {
+  return fetch("/api/midi?" + q, {
+    method: method || "GET",
+    cache: "no-store"
+  }).then(function (r) {
+    return r.text().then(function (t) {
+      if (!r.ok) throw new Error("http " + r.status);
+      try {
+        return JSON.parse(t);
+      } catch (e) {
+        throw new Error("bad reply");
+      }
+    });
+  });
+}
+
+function _queue(fn) {
+  var p = _net.then(fn, fn);
+  _net = p.then(function () {}, function () {});
+  return p;
+}
+
 function api(q, method) {
-  return fetch("/api/midi?" + q, { method: method || "GET", cache: "no-store" })
-    .then(function (r) { return r.json(); })
+  return _queue(function () { return _send(q, method); })
     .then(function (d) {
-      if (!d.ok) { toast(d.error || "request failed", true); return null; }
-      apply(d);
+      if (!d || !d.ok) {
+        toast((d && d.error) || "request failed", true);
+        return null;
+      }
+      try {
+        apply(d);
+      } catch (e) {
+        toast("ui error", true);
+        return null;
+      }
       return d;
     })
-    .catch(function () { toast("connection lost", true); return null; });
+    .catch(function () {
+      toast("connection lost - retrying", true);
+      if (!api._retry) {
+        api._retry = setTimeout(function () {
+          api._retry = null;
+          api("action=state");
+        }, 1500);
+      }
+      return null;
+    });
 }
 
 function post(q) { return api(q, "POST"); }
@@ -269,13 +308,12 @@ function ctlTags(c) {
 }
 
 function rawPost(q) {
-  return fetch("/api/midi?" + q, { method: "POST", cache: "no-store" })
-    .then(function (r) { return r.json(); })
+  return _queue(function () { return _send(q, "POST"); })
     .then(function (d) {
       if (d && d.ok === false) toast(d.error || "request failed", true);
       return d;
     })
-    .catch(function () { toast("connection lost", true); return null; });
+    .catch(function () { return null; });
 }
 
 var drag = null;
@@ -288,35 +326,55 @@ function faderValue(track, ev) {
 
 function faderPaint(el, v) {
   el._v = v;
-  el.querySelector(".fader-fill").style.height = (v / 127 * 100) + "%";
-  el.querySelector(".fader-cap").style.bottom = (v / 127 * 138) + "px";
-  el.querySelector(".fader-val").textContent = v;
+  var track = el.querySelector(".fader-track");
+  var th = track.clientHeight || 140;
+  var y = Math.round(v / 127 * (th - 12));
+  el.querySelector(".fader-fill").style.height = (y + 6) + "px";
+  el.querySelector(".fader-cap").style.bottom = y + "px";
+  var vv = el.querySelector(".fader-val");
+  if (vv) vv.textContent = v;
 }
 
 function bindFader(el, c) {
   var track = el.querySelector(".fader-track");
+  var hit = track;
   var cid = el.getAttribute("data-cid");
   faderPaint(el, c.value);
 
+  // Only one value request in flight; intermediate drag values are dropped.
+  var inflight = false, pending = null;
+  function flushSend() {
+    if (!pending) {
+      inflight = false;
+      return;
+    }
+    var job = pending;
+    pending = null;
+    inflight = true;
+    rawPost("action=sendctl&id=" + cid + "&value=" + job.v +
+            "&persist=" + (job.p ? "1" : "0") + "&lite=1")
+      .then(flushSend, flushSend);
+  }
   function send(v, persist) {
-    rawPost("action=sendctl&id=" + cid + "&value=" + v +
-            "&persist=" + (persist ? "1" : "0"));
+    pending = { v: v, p: !!persist };
+    if (!inflight) flushSend();
   }
 
-  el.addEventListener("pointerdown", function (ev) {
+  hit.addEventListener("pointerdown", function (ev) {
     ev.preventDefault();
-    try { el.setPointerCapture(ev.pointerId); } catch (e) {}
+    ev.stopPropagation();
+    try { hit.setPointerCapture(ev.pointerId); } catch (e) {}
     drag = { el: el, last: Date.now() };
     faderPaint(el, faderValue(track, ev));
     send(el._v, false);
   });
-  el.addEventListener("pointermove", function (ev) {
+  hit.addEventListener("pointermove", function (ev) {
     if (!drag || drag.el !== el) return;
     var v = faderValue(track, ev);
     if (v === el._v) return;
     faderPaint(el, v);
     var t = Date.now();
-    if (t - drag.last > 70) {
+    if (t - drag.last > 110) {
       drag.last = t;
       send(v, false);
     }
@@ -327,8 +385,8 @@ function bindFader(el, c) {
     send(el._v, true);
     drag = null;
   }
-  el.addEventListener("pointerup", end);
-  el.addEventListener("pointercancel", function () { drag = null; });
+  hit.addEventListener("pointerup", end);
+  hit.addEventListener("pointercancel", function () { drag = null; });
 }
 
 function drawSurface(d) {
@@ -347,15 +405,15 @@ function drawSurface(d) {
     var el = document.createElement("div");
     el.setAttribute("data-cid", c.id);
     var slot = c.slot || 0;
-    el.style.gridColumn = String((slot % 4) + 1);
-    el.style.gridRow = String(Math.floor(slot / 4) + 1);
+    el.style.gridColumn = String((slot % SURF_COLS) + 1);
+    el.style.gridRow = String(Math.floor(slot / SURF_COLS) + 1);
     if (c.kind === "fader") el.style.gridRowEnd = "span 2";
     if (c.kind === "fader") {
       el.className = "ctl fader-card";
       el.innerHTML = '<div class="ctl-name">' + esc(c.label) + "</div>" +
         '<div class="fader"><div class="fader-track">' +
-        '<div class="fader-fill"></div></div>' +
-        '<div class="fader-cap"></div></div>' +
+        '<div class="fader-fill"></div>' +
+        '<div class="fader-cap"></div></div></div>' +
         '<div class="fader-val">' + c.value + "</div>" + ctlTags(c);
       bindFader(el, c);
     } else {
@@ -368,24 +426,41 @@ function drawSurface(d) {
     }
     wrap.appendChild(el);
   }
+  sizeSurface();
+}
+
+var SURF_CELL = 116;
+var SURF_COLS = 8;
+
+function sizeSurface() {
+  var wrap = $("surfaceWrap");
+  var gap = 6;
+  var w = wrap.clientWidth;
+  if (!w) return;
+  var cell = Math.floor((w - (SURF_COLS - 1) * gap) / SURF_COLS);
+  if (cell < 56) cell = 56;
+  SURF_CELL = cell;
+  wrap.style.setProperty("--cell", cell + "px");
+  var fs = wrap.querySelectorAll(".fader-card");
+  for (var i = 0; i < fs.length; i++) faderPaint(fs[i], fs[i]._v || 0);
 }
 
 function slotFromPoint(x, y) {
   var wrap = $("surfaceWrap");
   var r = wrap.getBoundingClientRect();
   var gap = 6;
-  var pitch = 116 + gap;
-  var pitchY = 116 + gap;
+  var pitch = SURF_CELL + gap;
+  var pitchY = SURF_CELL + gap;
   var col = Math.round((x - r.left) / pitch);
   var row = Math.round((y - r.top) / pitchY);
-  col = col < 0 ? 0 : (col > 3 ? 3 : col);
+  col = col < 0 ? 0 : (col > SURF_COLS - 1 ? SURF_COLS - 1 : col);
   row = row < 0 ? 0 : row;
-  return row * 4 + col;
+  return row * SURF_COLS + col;
 }
 
 function gridPlace(el, slot, span) {
-  el.style.gridColumn = String((slot % 4) + 1);
-  el.style.gridRow = String(Math.floor(slot / 4) + 1);
+  el.style.gridColumn = String((slot % SURF_COLS) + 1);
+  el.style.gridRow = String(Math.floor(slot / SURF_COLS) + 1);
   el.style.gridRowEnd = span > 1 ? "span 2" : "auto";
 }
 
@@ -409,12 +484,12 @@ function previewLayout(id, slot) {
     var s = i === 0 ? slot : c.slot;
     if (s < 0) s = 0;
     while (true) {
-      var ok = !used[s] && (span === 1 || !used[s + 4]);
+      var ok = !used[s] && (span === 1 || !used[s + SURF_COLS]);
       if (ok) break;
       s++;
     }
     used[s] = 1;
-    if (span === 2) used[s + 4] = 1;
+    if (span === 2) used[s + SURF_COLS] = 1;
     at[c.id] = s;
     var el = $("surfaceWrap").querySelector('[data-cid="' + c.id + '"]');
     if (el) gridPlace(el, s, span);
@@ -426,8 +501,8 @@ var moveDrag = null;
 var DWELL_MS = 650;
 
 function placePh(ph, slot, span) {
-  ph.style.gridColumn = String((slot % 4) + 1);
-  ph.style.gridRow = String(Math.floor(slot / 4) + 1);
+  ph.style.gridColumn = String((slot % SURF_COLS) + 1);
+  ph.style.gridRow = String(Math.floor(slot / SURF_COLS) + 1);
   ph.style.gridRowEnd = span > 1 ? "span 2" : "auto";
 }
 
@@ -452,7 +527,8 @@ function armDwell() {
 $("surfaceWrap").addEventListener("pointerdown", function (e) {
   var card = e.target.closest ? e.target.closest(".ctl") : null;
   if (!card || !card.getAttribute("data-cid")) return;
-  if (e.target.closest(".fader") || e.target.closest("[data-k=trigger]")) return;
+  if (e.target.closest(".fader-track") ||
+      e.target.closest("[data-k=trigger]")) return;
   e.preventDefault();
   var r = card.getBoundingClientRect();
   moveDrag = {
@@ -678,28 +754,25 @@ $("grid").addEventListener("change", function (e) {
 });
 
 // ---- controls tab ---------------------------------------------------
-function showSub(which) {
-  var surface = which === "surface";
-  $("subSurface").className = surface ? "tab on" : "tab";
-  $("subSetup").className = surface ? "tab" : "tab on";
-  $("surfaceWrap").hidden = !surface;
-  $("addBar").hidden = surface;
-  $("ctlGrid").hidden = surface;
-}
-
 function showTab(which) {
   var pins = which === "pins";
+  var wid = which === "widgets";
+  var setup = which === "setup";
   $("tabPins").className = pins ? "tab on" : "tab";
-  $("tabCtl").className = pins ? "tab" : "tab on";
+  $("tabWidgets").className = wid ? "tab on" : "tab";
+  $("tabSetup").className = setup ? "tab on" : "tab";
   $("grid").hidden = !pins;
-  $("ctlPane").hidden = pins;
-  showSub("surface");
+  $("surfaceWrap").hidden = !wid;
+  $("setupPane").hidden = !setup;
+  if (!S) return;
+  if (pins) drawPins(S);
+  else if (wid) drawSurface(S);
+  else if (setup) drawControls(S);
 }
 
 $("tabPins").onclick = function () { showTab("pins"); };
-$("tabCtl").onclick = function () { showTab("ctl"); };
-$("subSurface").onclick = function () { showSub("surface"); };
-$("subSetup").onclick = function () { showSub("setup"); };
+$("tabWidgets").onclick = function () { showTab("widgets"); };
+$("tabSetup").onclick = function () { showTab("setup"); };
 
 $("addBar").addEventListener("click", function (e) {
   var k = e.target.getAttribute("data-add");
@@ -782,6 +855,7 @@ $("usbBtn").onclick = function () { post("action=mode&mode=wire"); };
 $("bleBtn").onclick = function () { post("action=mode&mode=ble"); };
 
 api("action=state");
+window.addEventListener("resize", function () { sizeSurface(); });
 document.addEventListener("visibilitychange", function () {
   if (!document.hidden) api("action=state");
 });

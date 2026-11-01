@@ -5,6 +5,7 @@ import asyncio
 import os
 import json
 import time
+import gc
 
 from apps.system.explorer.utils import fsapi
 from apps.system.explorer.utils import mounts
@@ -844,9 +845,12 @@ async def _route(method, path, query, headers, reader, writer):
                     query.get('id'), query.get('cc'), query.get('ch'),
                     query.get('label')))
             elif action == 'sendctl' and method == 'POST':
-                await _json_reply(writer, 200, midi_engine.send_control(
+                st = midi_engine.send_control(
                     query.get('id'), query.get('value'),
-                    query.get('persist', '1') == '1'))
+                    query.get('persist', '1') == '1',
+                    query.get('lite') == '1')
+                await _json_reply(writer, 200, st)
+                gc.collect()
             elif action == 'movectl' and method == 'POST':
                 await _json_reply(writer, 200, midi_engine.move_control(
                     query.get('id'), query.get('slot')))
@@ -935,6 +939,57 @@ async def _serve():
     _server = None
 
 
+async def _wifi_watchdog():
+    """Keep the STA link alive: reconnect if the router drops the station."""
+    import network
+    while STATUS['running']:
+        await asyncio.sleep_ms(5000)
+        if STATUS.get('mode') != 'sta':
+            continue
+        try:
+            from apps.system.wifi.app import wifi_state
+        except Exception:
+            continue
+        w = wifi_state.wlan
+        if w is None:
+            try:
+                w = network.WLAN(network.STA_IF)
+            except Exception:
+                continue
+        try:
+            live = w.isconnected()
+        except Exception:
+            continue
+        if live:
+            try:
+                wifi_state.connected = True
+                ip = w.ifconfig()[0]
+                if ip:
+                    STATUS['ip'] = ip
+                    wifi_state.ip = ip
+            except Exception:
+                pass
+            continue
+        ssid = wifi_state.ssid or STATUS.get('ssid') or ''
+        password = wifi_state.password or ''
+        if not ssid:
+            continue
+        try:
+            wifi_state.connected = False
+            try:
+                w.disconnect()
+            except Exception:
+                pass
+            await asyncio.sleep_ms(300)
+            w.connect(ssid, password)
+            try:
+                w.config(pm=0x11111111)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+
 def start(mode='sta', ssid='', ip=''):
     STATUS['mode'] = mode
     STATUS['ssid'] = ssid
@@ -952,6 +1007,7 @@ def start(mode='sta', ssid='', ip=''):
     STATUS['running'] = True
     try:
         asyncio.create_task(_serve())
+        asyncio.create_task(_wifi_watchdog())
     except Exception as e:
         STATUS['running'] = False
         STATUS['error'] = 'task: {}'.format(e)

@@ -297,6 +297,10 @@ async def _boot_restore():
                     pass
                 await asyncio.sleep_ms(400)
             try:
+                wlan.config(pm=0x11111111)  # disable modem sleep: keeps link stable
+            except Exception:
+                pass
+            try:
                 wlan.connect(ssid, password)
             except Exception as e:
                 error('boot wifi connect:', type(e).__name__, e)

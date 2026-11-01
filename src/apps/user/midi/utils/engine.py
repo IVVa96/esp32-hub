@@ -19,7 +19,7 @@ ACTIVE_TYPES = ('Btn/Sw', 'Toggle Btn', 'Pot', 'Encoder')
 # Web control surface: faders, buttons, switches, knobs -> CC messages.
 KINDS = ('fader', 'button', 'switch')
 MAX_CONTROLS = 16
-COLS = 4          # Surface grid columns (shared with the web page).
+COLS = 8          # Surface grid columns (shared with the web page).
 
 _MAX_NAME = 24
 _MAX_LABEL = 16
@@ -326,7 +326,7 @@ def set_control(cid, cc=None, ch=None, label=None):
     return state()
 
 
-def send_control(cid, value=None, persist=True):
+def send_control(cid, value=None, persist=True, lite=False):
     _ensure_loaded()
     c = _control(cid)
     if c is None:
@@ -347,6 +347,8 @@ def send_control(cid, value=None, persist=True):
         return {'ok': False, 'error': 'send failed'}
     if persist:
         _save_temp()
+    if lite:
+        return {'ok': True}
     return state()
 
 
