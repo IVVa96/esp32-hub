@@ -32,7 +32,6 @@
     padding:10px 14px;background:rgba(0,0,0,.94);border-bottom:1px solid var(--line)}
   .brand{display:flex;align-items:center;gap:9px;color:var(--accent);
     font-size:11px;white-space:nowrap}
-  .brand .logo{display:block;color:var(--accent)}
   .run{display:flex;align-items:center;gap:7px;color:var(--muted);
     font-size:8px;white-space:nowrap}
   .dot{width:7px;height:7px;background:var(--dim);box-shadow:0 0 0 1px #000}
@@ -107,10 +106,6 @@
 <body>
 <header>
   <a class="brand" href="/">
-    <svg class="logo" width="20" height="20" viewBox="0 0 12 12"
-         shape-rendering="crispEdges" aria-hidden="true">
-      <path fill="currentColor" d="M1 2h4v1h1v1h5v7H1zM2 5h8v5H2z" fill-rule="evenodd"/>
-    </svg>
     <span>ESP32 MultiTool</span>
   </a>
   <div class="run"><span class="dot" id="dot"></span><span id="modeInfo">offline</span></div>
@@ -171,9 +166,20 @@
   function info() {
     api("/api/info").then(function (d) {
       if (!d || !d.ok) return;
-      var mode = (d.mode || "sta").toUpperCase();
-      var ip = d.ip ? " " + d.ip : "";
-      $("modeInfo").textContent = "ONLINE " + mode + ip;
+      var mode = (d.mode || "sta").toLowerCase();
+      var ssid = d.ssid || "";
+      var ip = d.ip || "";
+      var label;
+      if (mode === "ap") {
+        label = "AP " + (ssid || "ESP32-Files") + (ip ? " \u00b7 " + ip : "");
+      } else if (mode === "sta") {
+        label = "STA " + (ssid ? ssid + " \u00b7 " : "") + ip;
+      } else if (d.usb) {
+        label = "USB \u00b7 mpremote";
+      } else {
+        label = "offline";
+      }
+      $("modeInfo").textContent = label;
       $("dot").className = "dot on";
     }).catch(function () {
       $("modeInfo").textContent = "offline";

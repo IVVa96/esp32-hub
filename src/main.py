@@ -95,7 +95,6 @@ class LauncherScreen(Screen):
             self.wri,
             ('WEB UI', 'CLASSIC UI', 'POWER OFF'),
             top=84, row_h=44, gap=6, kind='cards',
-            icons=('web', 'apps', 'power'),
             on_select=self._pick,
         )
 

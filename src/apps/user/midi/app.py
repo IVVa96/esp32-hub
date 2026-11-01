@@ -2288,7 +2288,6 @@ class ModeSelectScreen(Screen):
 
     _ITEMS  = ('USB', 'BLE')
     _DESC   = ('Cable MIDI', 'Wireless MIDI')
-    _ICONS  = ('usb', 'bt')
 
     def __init__(self):
         super().__init__()
@@ -2301,7 +2300,7 @@ class ModeSelectScreen(Screen):
         self.menu = PixelMenu(
             self.wri, self._ITEMS,
             top=84, row_h=44, gap=6, kind='cards',
-            icons=self._ICONS, descriptions=self._DESC,
+            descriptions=self._DESC,
             on_select=self._pick,
         )
         self.cb = PixelClose(self.wri, 20, SCREEN_W - 36, self._on_close)

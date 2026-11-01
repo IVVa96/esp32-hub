@@ -34,24 +34,27 @@
   a{color:var(--text);text-decoration:none}
 
   /* ---------- header ---------- */
-  header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:18px;
-    flex-wrap:wrap;padding:10px 16px;background:#000;
-    border-bottom:2px solid var(--line)}
-  .brand{display:flex;align-items:center;gap:9px;font-weight:400;
-    letter-spacing:.02em;font-size:11px;text-transform:uppercase}
-  .brand .logo{color:var(--accent);display:block;width:18px;height:18px}
-  .brand .slash{color:var(--accent);margin:0 1px}
-  .brand:hover{color:var(--accent)}
-  .run{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:8px;
-    text-transform:uppercase;letter-spacing:.02em}
-  .dot{width:6px;height:6px;background:var(--ok);display:inline-block;
-    box-shadow:0 0 0 1px #000,0 0 8px rgba(125,255,154,.8);animation:pulse 2.4s steps(2) infinite}
-  .dot.off{background:var(--danger);box-shadow:0 0 0 1px #000,0 0 8px rgba(255,92,92,.7);animation:none}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-  .meta{margin-left:auto;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-  .chip{display:inline-block;padding:5px 7px;border:1px solid var(--line);
-    background:var(--panel);color:var(--muted);font-size:8px;letter-spacing:.02em}
+  header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;
+    padding:10px 14px;background:rgba(0,0,0,.94);border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:9px;color:var(--accent);
+    font-size:11px;white-space:nowrap}
+  .brand:hover{color:var(--accent-hi)}
+  .run{display:flex;align-items:center;gap:7px;color:var(--muted);
+    font-size:8px;white-space:nowrap}
+  .dot{width:7px;height:7px;background:var(--dim);display:inline-block;
+    box-shadow:0 0 0 1px #000}
+  .dot.on{background:var(--ok);box-shadow:0 0 7px var(--ok)}
+  .meta{margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .chip{display:inline-block;padding:5px 7px 4px;border:1px solid var(--line2);
+    background:var(--panel);color:var(--muted);font-size:7px}
   .chip b{color:var(--accent);font-weight:400}
+  header .tiny{border:1px solid var(--line2);padding:6px 8px 5px;font-size:7px;
+    background:var(--panel2);color:var(--muted);box-shadow:none}
+  header .tiny:hover{background:var(--panel2);color:var(--accent);
+    border-color:var(--accent);transform:none}
+  header .tiny.danger{color:var(--danger);border-color:var(--danger)}
+  header .tiny.danger:hover{background:var(--panel2);color:var(--danger);
+    border-color:var(--danger);transform:none}
 
   /* ---------- buttons ---------- */
   button,.btn{font:400 8px/1.2 var(--pixel);letter-spacing:.02em;text-transform:uppercase;
@@ -239,7 +242,7 @@
   .ed-foot .sp{flex:1}
 
   @media(max-width:720px){
-    header{gap:10px;padding:10px 12px}
+    header{gap:10px;padding:10px 12px;flex-wrap:wrap}
     .brand{font-size:10px}
     .meta{margin-left:0;width:100%}
     main{padding:12px 12px 48px}
@@ -270,10 +273,6 @@
 <body>
 <header>
   <a class="brand" id="brandLink" href="/">
-    <svg class="logo" width="20" height="20" viewBox="0 0 12 12"
-         shape-rendering="crispEdges" aria-hidden="true">
-      <path fill="currentColor" d="M1 2h4v1h1v1h5v7H1zM2 5h8v5H2z" fill-rule="evenodd"/>
-    </svg>
     <span>ESP32 MultiTool</span>
   </a>
   <div class="run"><span class="dot" id="dot"></span><span id="modeInfo">offline</span></div>
@@ -751,7 +750,7 @@ async function loadInfo() {
     state.info = info;
     state.roots = info.roots || [{ id: "/", label: "Internal" }];
     $("freeInfo").textContent = "FREE " + fmtSize(info.free);
-    $("dot").classList.remove("off");
+    $("dot").className = "dot on";
     let m = "";
     if (info.mode === "ap") m = "AP " + (info.ssid || "ESP32-Files") + " · " + (info.ip || "");
     else if (info.mode === "sta") m = "STA " + (info.ssid || "") + " · " + (info.ip || "");
@@ -764,7 +763,7 @@ async function loadInfo() {
         "USB mode: access via mpremote. The board application is stopped — press RESET when finished.";
     }
   } catch (e) {
-    $("dot").classList.add("off");
+    $("dot").className = "dot";
     $("modeInfo").textContent = "offline";
     toast("No connection to the board: " + e.message);
   }
