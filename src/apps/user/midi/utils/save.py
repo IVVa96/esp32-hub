@@ -1,8 +1,8 @@
 # ======================================================================
 # save.py — сохранение/загрузка пресетов MIDI (JSON)
 # ======================================================================
-# Допустимые типы: '—', 'Btn/Sw', 'Virt_sw', 'Pot', 'Encoder'.
-# Старые названия ('Button', 'Virt Sw') конвертируются автоматически.
+# Допустимые типы: '—', 'Btn/Sw', 'Toggle Btn', 'Pot', 'Encoder'.
+# Старые названия ('Button', 'Virt Sw', 'Virt_sw') конвертируются автоматически.
 #
 # 'encB' не пишется в файл — восстанавливается из 'pair' энкодера.
 # 'Encoder' без пары записывается как '—' (защита от недоделанного
@@ -19,15 +19,20 @@ from core.logger import error
 
 _TEMP_NAME = '_temp'
 _temp_cache = None
+_temp_base = None
+_temp_controls = None
 
-_VALID_TYPES = ('—', 'Btn/Sw', 'Virt_sw', 'Pot', 'Encoder')
+_VALID_TYPES = ('—', 'Btn/Sw', 'Toggle Btn', 'Pot', 'Encoder')
+
+# Контролы веб-пульта: фейдер, кнопка, переключатель, ручка.
+_VALID_KINDS = ('fader', 'button', 'switch')
 
 
 def _normalize_type(t):
     if t == 'Button':
         return 'Btn/Sw'
-    if t == 'Virt Sw':
-        return 'Virt_sw'
+    if t == 'Virt Sw' or t == 'Virt_sw':
+        return 'Toggle Btn'
     return t
 
 
@@ -162,15 +167,88 @@ def load(name):
     return _parse_pins(data)
 
 
-def save(name, cfg):
+def _clean_controls(items):
+    """Приводит список контролов к валидному виду (id = позиция + 1)."""
+    out = []
+    if not isinstance(items, (list, tuple)):
+        return out
+    for i, c in enumerate(items):
+        if not isinstance(c, dict):
+            continue
+        kind = c.get('kind')
+        if kind == 'knob':
+            kind = 'fader'
+        if kind not in _VALID_KINDS:
+            continue
+        try:
+            cc = int(c.get('cc', 0))
+        except Exception:
+            cc = 0
+        if cc < 0:
+            cc = 0
+        elif cc > 127:
+            cc = 127
+        try:
+            ch = int(c.get('ch', MIDI_DEFAULT_CHANNEL))
+        except Exception:
+            ch = MIDI_DEFAULT_CHANNEL
+        if not (1 <= ch <= 16):
+            ch = MIDI_DEFAULT_CHANNEL
+        try:
+            val = int(c.get('value', 0))
+        except Exception:
+            val = 0
+        if val < 0:
+            val = 0
+        elif val > 127:
+            val = 127
+        label = c.get('label')
+        if not isinstance(label, str) or not label:
+            label = 'CTRL {}'.format(i + 1)
+        out.append({'id': i + 1, 'kind': kind, 'label': label[:16],
+                    'cc': cc, 'ch': ch, 'value': val})
+    return out
+
+
+def _read(name):
+    if not _ensure_dir():
+        return None
+    try:
+        with open(_path(name), 'r') as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def load_controls(name):
+    if name == MIDI_DEFAULT_PRESET:
+        data = _read(_TEMP_NAME)
+        if not isinstance(data, dict):
+            return []
+        base = data.get('base', MIDI_DEFAULT_PRESET)
+        if base != MIDI_DEFAULT_PRESET:
+            return []
+        return _clean_controls(data.get('controls'))
+    data = _read(name)
+    if not isinstance(data, dict):
+        return []
+    return _clean_controls(data.get('controls'))
+
+
+def save(name, cfg, controls=None):
     if name == MIDI_DEFAULT_PRESET:
         return False
     if not _ensure_dir():
         return False
     pins = _build_pins(cfg)
+    if controls is None:
+        old = _read(name)
+        controls = old.get('controls') if isinstance(old, dict) else None
+    payload = {'name': name, 'pins': pins,
+               'controls': _clean_controls(controls)}
     try:
         with open(_path(name), 'w') as f:
-            json.dump({'name': name, 'pins': pins}, f)
+            json.dump(payload, f)
         return True
     except Exception as e:
         error("save.save:", e)
@@ -201,7 +279,8 @@ def rename(old_name, new_name):
     pins = load(old_name)
     if pins is None:
         return False
-    if not save(new_name, pins):
+    ctls = load_controls(old_name)
+    if not save(new_name, pins, ctls):
         return False
     try:
         os.remove(_path(old_name))
@@ -210,18 +289,27 @@ def rename(old_name, new_name):
     base, tpins = load_temp()
     if base == old_name:
         try:
-            save_temp(tpins or pins, new_name)
+            save_temp(tpins or pins, new_name, ctls)
         except Exception:
             pass
     return True
 
 
-def save_temp(cfg, base):
-    global _temp_cache
+def save_temp(cfg, base, controls=None):
+    global _temp_cache, _temp_base, _temp_controls
     if not _ensure_dir():
         return False
     pins = _build_pins(cfg)
-    payload = {'base': base or MIDI_DEFAULT_PRESET, 'pins': pins}
+    base = base or MIDI_DEFAULT_PRESET
+    if controls is None:
+        if _temp_controls is not None and _temp_base == base:
+            controls = _temp_controls
+        else:
+            controls = load_controls(base)
+    controls = _clean_controls(controls)
+    payload = {'base': base, 'pins': pins, 'controls': controls}
+    _temp_base = base
+    _temp_controls = controls
     try:
         new_json = json.dumps(payload)
     except Exception as e:
@@ -240,7 +328,7 @@ def save_temp(cfg, base):
 
 
 def load_temp():
-    global _temp_cache
+    global _temp_cache, _temp_base, _temp_controls
     if not _ensure_dir():
         return None, None
     try:
@@ -256,6 +344,8 @@ def load_temp():
     base = data.get('base', MIDI_DEFAULT_PRESET)
     if not isinstance(base, str) or not base:
         base = MIDI_DEFAULT_PRESET
+    _temp_base = base
+    _temp_controls = _clean_controls(data.get('controls'))
     pins = _parse_pins(data)
     return base, pins
 

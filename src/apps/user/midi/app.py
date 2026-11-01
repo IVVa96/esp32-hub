@@ -275,7 +275,7 @@ class MidiScreen(Screen):
     _components = {}
     _presets_confirm_delete = []
 
-    _TYPE_LIST = ('—', 'Btn/Sw', 'Virt_sw', 'Pot', 'Encoder')
+    _TYPE_LIST = ('—', 'Btn/Sw', 'Toggle Btn', 'Pot', 'Encoder')
     _CHANNELS  = tuple(str(i) for i in range(1, 17))
     _CC_VALUES = tuple(str(i) for i in range(128))
 
@@ -559,8 +559,8 @@ class MidiScreen(Screen):
             t = entry['type']
             if t == 'Button':
                 t = 'Btn/Sw'
-            elif t == 'Virt Sw':
-                t = 'Virt_sw'
+            elif t == 'Virt Sw' or t == 'Virt_sw':
+                t = 'Toggle Btn'
             if t == 'Pot' and pin not in MIDI_ADC_PINS:
                 continue
             pair = entry.get('pair')
@@ -1486,7 +1486,7 @@ class MidiScreen(Screen):
             if t == 'Btn/Sw':
                 MidiScreen._components[pin] = hw.ButtonInput(
                     pin, cfg['cc'], ch)
-            elif t == 'Virt_sw':
+            elif t == 'Toggle Btn':
                 MidiScreen._components[pin] = hw.VirtSwInput(
                     pin, cfg['cc'], ch)
             elif t == 'Pot':
@@ -1527,7 +1527,7 @@ class MidiScreen(Screen):
     def _rebuild_all(self):
         self._stop_all()
         for p in MIDI_AVAILABLE_PINS:
-            if self._cfg[p]['type'] in ('Btn/Sw', 'Virt_sw', 'Pot', 'Encoder'):
+            if self._cfg[p]['type'] in ('Btn/Sw', 'Toggle Btn', 'Pot', 'Encoder'):
                 self._rebuild(p)
 
     def after_open(self):

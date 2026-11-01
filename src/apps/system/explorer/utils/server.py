@@ -833,6 +833,20 @@ async def _route(method, path, query, headers, reader, writer):
             elif action == 'rename' and method == 'POST':
                 await _json_reply(writer, 200, midi_engine.rename(
                     query.get('old'), query.get('new')))
+            elif action == 'addctl' and method == 'POST':
+                await _json_reply(writer, 200, midi_engine.add_control(
+                    query.get('kind', 'fader')))
+            elif action == 'delctl' and method == 'POST':
+                await _json_reply(writer, 200, midi_engine.remove_control(
+                    query.get('id')))
+            elif action == 'setctl' and method == 'POST':
+                await _json_reply(writer, 200, midi_engine.set_control(
+                    query.get('id'), query.get('cc'), query.get('ch'),
+                    query.get('label')))
+            elif action == 'sendctl' and method == 'POST':
+                await _json_reply(writer, 200, midi_engine.send_control(
+                    query.get('id'), query.get('value'),
+                    query.get('persist', '1') == '1'))
             else:
                 await _err(writer, 400, 'bad midi action')
         except Exception as e:

@@ -65,6 +65,57 @@
   .dirty{margin-left:auto;font-size:7px;color:var(--dim)}
   .dirty.on{color:var(--accent)}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(216px,1fr));gap:10px}
+  .grid[hidden],.bar[hidden]{display:none}
+  .tabs{display:flex;gap:6px;margin:10px 0}
+  .tab{border:1px solid var(--line2);background:var(--panel2);color:var(--muted);
+    padding:8px 12px 7px;font-size:7px}
+  .tab:hover{border-color:var(--accent);color:var(--accent)}
+  .tab.on{border-color:var(--accent);color:var(--accent)}
+  .ctl-h{display:flex;align-items:center;gap:6px;font-size:8px;color:var(--muted)}
+  .ctl-h .kind{font-size:6px;color:var(--dim);border:1px solid var(--line2);
+    padding:2px 4px 1px}
+  .ctl-h .del{margin-left:auto;border:1px solid var(--line2);background:#000;
+    color:var(--danger);font-size:7px;padding:3px 6px 2px;line-height:1}
+  .ctl-h .del:hover{border-color:var(--danger)}
+  .row .val{font-size:7px;color:var(--accent);width:26px;text-align:right;
+    flex:0 0 auto}
+  .row input[type=range]{flex:1 1 auto;width:100%;padding:0;border:0;
+    background:transparent;accent-color:var(--accent)}
+  .padbtn{width:100%;margin-top:8px;border:1px solid var(--line2);
+    background:#000;color:var(--text);padding:14px 8px 12px;font-size:8px}
+  .padbtn:hover{border-color:var(--accent);color:var(--accent)}
+  .padbtn.on{border-color:var(--ok);color:var(--ok)}
+  .padbtn.flash{border-color:var(--ok);color:var(--ok);background:#0e2a17}
+  #ctlPane[hidden],.surface[hidden]{display:none}
+  .sub{margin-top:0}
+  .surface{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;
+    margin-top:10px}
+  .ctl{border:1px solid var(--line);background:var(--panel2);padding:8px;
+    box-shadow:inset 0 0 0 1px #000}
+  .ctl-tags{display:flex;gap:5px;align-items:center;font-size:6px;
+    color:var(--dim);width:100%}
+  .ctl-tags .tid{color:var(--accent);border:1px solid var(--line2);
+    padding:2px 4px 1px}
+  .fader-card{width:116px;display:flex;flex-direction:column;
+    align-items:center;gap:6px}
+  .pad-card{width:116px;display:flex;flex-direction:column;gap:6px}
+  .pad-card .padbtn{margin-top:2px;padding:26px 8px 24px}
+  .fader{position:relative;width:40px;height:152px;margin:2px 0;
+    touch-action:none;cursor:pointer;-webkit-user-select:none;
+    user-select:none}
+  .fader-track{position:absolute;left:13px;top:1px;width:14px;height:150px;
+    border:2px solid var(--line2);border-radius:0;background:#000;
+    overflow:hidden}
+  .fader-fill{position:absolute;left:0;bottom:0;width:100%;
+    background:var(--accent)}
+  .fader-cap{position:absolute;left:0;width:40px;height:12px;bottom:0;
+    border:0;border-radius:0;background:var(--accent);
+    box-shadow:inset 0 0 0 2px #000;pointer-events:none}
+  .fader-cap:after{content:"";position:absolute;left:0;right:0;top:5px;
+    height:2px;background:#000}
+  .fader-val{font-size:8px;color:var(--accent)}
+  .ctl-name{font-size:6px;color:var(--muted);text-align:center;
+    line-height:1.6;word-break:break-word}
   .pin{border:1px solid var(--line);background:var(--panel2);padding:10px;
     box-shadow:inset 0 0 0 1px #000}
   .pin.active{border-color:var(--accent)}
@@ -120,14 +171,36 @@
     <span class="dirty" id="dirty">CLEAN</span>
   </section>
 
-  <section class="grid" id="grid"></section>
+  <nav class="tabs">
+    <button class="tab" id="tabPins">PINS</button>
+    <button class="tab on" id="tabCtl">CONTROLS</button>
+  </nav>
+
+  <section class="grid" id="grid" hidden></section>
+
+  <section id="ctlPane">
+    <nav class="tabs sub">
+      <button class="tab on" id="subSurface">SURFACE</button>
+      <button class="tab" id="subSetup">SETTINGS</button>
+    </nav>
+
+    <section class="bar" id="addBar" hidden>
+      <label>ADD</label>
+      <button class="btn" data-add="fader">FADER</button>
+      <button class="btn" data-add="button">BUTTON</button>
+      <button class="btn" data-add="switch">SWITCH</button>
+    </section>
+
+    <section class="surface" id="surfaceWrap"></section>
+    <section class="grid" id="ctlGrid" hidden></section>
+  </section>
 </main>
 
 <div class="toast" id="toast" hidden></div>
 
 <script>
 var S = null;
-var TYPES = ["\u2014", "Btn/Sw", "Virt_sw", "Pot", "Encoder"];
+var TYPES = ["\u2014", "Btn/Sw", "Toggle Btn", "Pot", "Encoder"];
 
 function $(id) { return document.getElementById(id); }
 
@@ -172,6 +245,157 @@ function apply(d) {
   $("dirty").textContent = d.dirty ? "UNSAVED *" : "CLEAN";
   $("dirty").className = d.dirty ? "dirty on" : "dirty";
   drawPins(d);
+  drawSurface(d);
+  drawControls(d);
+}
+
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function ctlPrefix(kind) {
+  return kind === "fader" ? "F" : (kind === "switch" ? "S" : "B");
+}
+
+function ctlTags(c) {
+  return '<div class="ctl-tags"><span class="tid">' + ctlPrefix(c.kind) + c.num +
+    "</span><span>CC " + c.cc + "</span><span>CH " + c.ch + "</span></div>";
+}
+
+function rawPost(q) {
+  return fetch("/api/midi?" + q, { method: "POST", cache: "no-store" })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d && d.ok === false) toast(d.error || "request failed", true);
+      return d;
+    })
+    .catch(function () { toast("connection lost", true); return null; });
+}
+
+var drag = null;
+
+function faderValue(track, ev) {
+  var r = track.getBoundingClientRect();
+  var v = Math.round((1 - (ev.clientY - r.top) / r.height) * 127);
+  return v < 0 ? 0 : (v > 127 ? 127 : v);
+}
+
+function faderPaint(el, v) {
+  el._v = v;
+  el.querySelector(".fader-fill").style.height = (v / 127 * 100) + "%";
+  el.querySelector(".fader-cap").style.bottom = (v / 127 * 140) + "px";
+  el.querySelector(".fader-val").textContent = v;
+}
+
+function bindFader(el, c) {
+  var track = el.querySelector(".fader-track");
+  var cid = el.getAttribute("data-cid");
+  faderPaint(el, c.value);
+
+  function send(v, persist) {
+    rawPost("action=sendctl&id=" + cid + "&value=" + v +
+            "&persist=" + (persist ? "1" : "0"));
+  }
+
+  el.addEventListener("pointerdown", function (ev) {
+    ev.preventDefault();
+    try { el.setPointerCapture(ev.pointerId); } catch (e) {}
+    drag = { el: el, last: Date.now() };
+    faderPaint(el, faderValue(track, ev));
+    send(el._v, false);
+  });
+  el.addEventListener("pointermove", function (ev) {
+    if (!drag || drag.el !== el) return;
+    var v = faderValue(track, ev);
+    if (v === el._v) return;
+    faderPaint(el, v);
+    var t = Date.now();
+    if (t - drag.last > 70) {
+      drag.last = t;
+      send(v, false);
+    }
+  });
+  function end(ev) {
+    if (!drag || drag.el !== el) return;
+    faderPaint(el, faderValue(track, ev));
+    send(el._v, true);
+    drag = null;
+  }
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", function () { drag = null; });
+}
+
+function drawSurface(d) {
+  var wrap = $("surfaceWrap");
+  wrap.innerHTML = "";
+  var list = d.controls || [];
+  if (!list.length) {
+    var n = document.createElement("div");
+    n.className = "note";
+    n.textContent = "NO CONTROLS YET - OPEN SETTINGS AND ADD SOME";
+    wrap.appendChild(n);
+    return;
+  }
+  for (var i = 0; i < list.length; i++) {
+    var c = list[i];
+    var el = document.createElement("div");
+    el.setAttribute("data-cid", c.id);
+    if (c.kind === "fader") {
+      el.className = "ctl fader-card";
+      el.innerHTML = ctlTags(c) +
+        '<div class="fader"><div class="fader-track">' +
+        '<div class="fader-fill"></div></div>' +
+        '<div class="fader-cap"></div></div>' +
+        '<div class="fader-val">' + c.value + "</div>" +
+        '<div class="ctl-name">' + esc(c.label) + "</div>";
+      bindFader(el, c);
+    } else {
+      el.className = "ctl pad-card";
+      var on = c.kind === "switch" && c.value;
+      el.innerHTML = ctlTags(c) +
+        '<button class="padbtn' + (on ? " on" : "") + '" data-k="trigger">' +
+        (c.kind === "switch" ? (c.value ? "ON" : "OFF") : "SEND") + "</button>" +
+        '<div class="ctl-name">' + esc(c.label) + "</div>";
+    }
+    wrap.appendChild(el);
+  }
+}
+
+function drawControls(d) {
+  var g = $("ctlGrid");
+  g.innerHTML = "";
+  var list = d.controls || [];
+  if (!list.length) {
+    var n = document.createElement("div");
+    n.className = "note";
+    n.textContent = "NO CONTROLS YET - USE THE BUTTONS ABOVE TO ADD SOME";
+    g.appendChild(n);
+    return;
+  }
+  for (var i = 0; i < list.length; i++) {
+    var c = list[i];
+    var el = document.createElement("div");
+    el.className = "pin active";
+    el.setAttribute("data-cid", c.id);
+    el.innerHTML = '<div class="ctl-h"><span>' + ctlPrefix(c.kind) + c.num +
+      "</span>" +
+      '<span class="kind">' + c.kind.toUpperCase() + "</span>" +
+      '<button class="del" title="remove">&times;</button></div>';
+    el.appendChild(row("NAME", textInput("label", c.label, 16)));
+    el.appendChild(row("CC", input("cc", c.cc, 0, 127)));
+    el.appendChild(row("CH", input("ch", c.ch, 1, 16)));
+    g.appendChild(el);
+  }
+}
+
+function textInput(k, val, maxlen) {
+  var el = document.createElement("input");
+  el.type = "text";
+  el.maxLength = maxlen;
+  el.value = val;
+  el.setAttribute("data-k", k);
+  return el;
 }
 
 function freePairList(pin, curPair) {
@@ -216,11 +440,11 @@ function drawPins(d) {
 
     el.appendChild(row("TYPE", select("type", TYPES, p.type)));
     el.appendChild(row("CC", input("cc", p.cc, 0, 127)));
-    var chs = [];
-    for (var c = 1; c <= 16; c++) chs.push(String(c));
-    el.appendChild(row("CH", select("ch", chs, String(p.ch))));
+    el.appendChild(row("CH", input("ch", p.ch, 1, 16)));
 
-    var pairRow = row("PAIR", select("pair", freePairList(p.pin, p.pair),
+    var pl = freePairList(p.pin, p.pair);
+    pl.unshift("");
+    var pairRow = row("PAIR", select("pair", pl,
                                      p.pair === null ? "" : String(p.pair)));
     pairRow.className = "row";
     if (p.type !== "Encoder") pairRow.hidden = true;
@@ -252,7 +476,7 @@ function select(k, values, cur) {
   for (var i = 0; i < values.length; i++) {
     var o = document.createElement("option");
     o.value = values[i];
-    o.textContent = String(values[i]).toUpperCase();
+    o.textContent = values[i] === "" ? "SELECT" : String(values[i]).toUpperCase();
     s.appendChild(o);
   }
   s.value = cur;
@@ -301,8 +525,76 @@ $("grid").addEventListener("change", function (e) {
   sendPin(card);
 });
 
-$("loadBtn").onclick = function () {
-  var n = $("preset").value;
+// ---- controls tab ---------------------------------------------------
+function showSub(which) {
+  var surface = which === "surface";
+  $("subSurface").className = surface ? "tab on" : "tab";
+  $("subSetup").className = surface ? "tab" : "tab on";
+  $("surfaceWrap").hidden = !surface;
+  $("addBar").hidden = surface;
+  $("ctlGrid").hidden = surface;
+}
+
+function showTab(which) {
+  var pins = which === "pins";
+  $("tabPins").className = pins ? "tab on" : "tab";
+  $("tabCtl").className = pins ? "tab" : "tab on";
+  $("grid").hidden = !pins;
+  $("ctlPane").hidden = pins;
+  showSub("surface");
+}
+
+$("tabPins").onclick = function () { showTab("pins"); };
+$("tabCtl").onclick = function () { showTab("ctl"); };
+$("subSurface").onclick = function () { showSub("surface"); };
+$("subSetup").onclick = function () { showSub("setup"); };
+
+$("addBar").addEventListener("click", function (e) {
+  var k = e.target.getAttribute("data-add");
+  if (k) post("action=addctl&kind=" + k);
+});
+
+$("ctlGrid").addEventListener("change", function (e) {
+  var card = e.target.closest ? e.target.closest(".pin") : null;
+  if (!card) return;
+  var cid = card.getAttribute("data-cid");
+  var k = e.target.getAttribute("data-k");
+  if (k === "cc" || k === "ch" || k === "label") {
+    post("action=setctl&id=" + cid + "&" + k + "=" +
+         encodeURIComponent(e.target.value));
+  }
+});
+
+$("ctlGrid").addEventListener("click", function (e) {
+  var card = e.target.closest ? e.target.closest(".pin") : null;
+  if (!card) return;
+  if (e.target.className === "del") {
+    post("action=delctl&id=" + card.getAttribute("data-cid"));
+  }
+});
+
+$("surfaceWrap").addEventListener("click", function (e) {
+  var b = e.target.closest ? e.target.closest("[data-k=trigger]") : null;
+  if (!b) return;
+  var card = b.closest(".ctl");
+  if (!card) return;
+  var cid = card.getAttribute("data-cid");
+  b.classList.add("flash");
+  setTimeout(function () { b.classList.remove("flash"); }, 160);
+  rawPost("action=sendctl&id=" + cid).then(function (d) {
+    if (!d || !d.ok) return;
+    var list = d.controls || [];
+    var c = null;
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i].id) === String(cid)) c = list[i];
+    }
+    if (!c || c.kind !== "switch") return;
+    b.textContent = c.value ? "ON" : "OFF";
+    b.className = "padbtn" + (c.value ? " on" : "");
+  });
+});
+
+$("loadBtn").onclick = function () {  var n = $("preset").value;
   if (!n) return;
   post("action=load&name=" + encodeURIComponent(n));
 };

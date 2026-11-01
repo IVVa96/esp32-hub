@@ -13,10 +13,17 @@ from apps.user.midi.utils import hw, ble_midi
 from apps.user.midi.utils import save as midi_save
 
 
-TYPES = ('—', 'Btn/Sw', 'Virt_sw', 'Pot', 'Encoder')
-ACTIVE_TYPES = ('Btn/Sw', 'Virt_sw', 'Pot', 'Encoder')
+TYPES = ('—', 'Btn/Sw', 'Toggle Btn', 'Pot', 'Encoder')
+ACTIVE_TYPES = ('Btn/Sw', 'Toggle Btn', 'Pot', 'Encoder')
+
+# Web control surface: faders, buttons, switches, knobs -> CC messages.
+KINDS = ('fader', 'button', 'switch')
+MAX_CONTROLS = 16
 
 _MAX_NAME = 24
+_MAX_LABEL = 16
+
+_controls = None
 
 
 class _Host:
@@ -42,9 +49,14 @@ _started = False
 
 # ---- lifecycle -------------------------------------------------------
 def _ensure_loaded():
+    global _controls
     if not MidiScreen._presets_loaded:
         MidiScreen._load_from_temp_or_preset()
         MidiScreen._presets_loaded = True
+    if _controls is None:
+        _controls = midi_save.load_controls(
+            MidiScreen._current_preset or MIDI_DEFAULT_PRESET)
+        _renumber()
 
 
 def start():
@@ -104,9 +116,133 @@ def _save_temp():
     try:
         midi_save.save_temp(
             MidiScreen._cfg,
-            MidiScreen._current_preset or MIDI_DEFAULT_PRESET)
+            MidiScreen._current_preset or MIDI_DEFAULT_PRESET,
+            _controls or [])
     except Exception:
         pass
+
+
+# ---- control surface -------------------------------------------------
+def _renumber():
+    """id — сквозной (для API), num — номер внутри своего типа."""
+    counters = {}
+    for i, c in enumerate(_controls):
+        c['id'] = i + 1
+        k = c['kind']
+        n = counters.get(k, 0) + 1
+        counters[k] = n
+        c['num'] = n
+
+
+def _label_for(c):
+    return '{} {}'.format(c['kind'].upper(), c.get('num', c['id']))
+
+
+def _control(cid):
+    try:
+        cid = int(cid)
+    except Exception:
+        return None
+    for c in _controls:
+        if c['id'] == cid:
+            return c
+    return None
+
+
+def _controls_state():
+    return [{'id': c['id'], 'num': c.get('num', c['id']),
+             'kind': c['kind'], 'label': c['label'],
+             'cc': c['cc'], 'ch': c['ch'], 'value': c['value']}
+            for c in (_controls or [])]
+
+
+def add_control(kind='fader'):
+    _ensure_loaded()
+    if kind not in KINDS:
+        return {'ok': False, 'error': 'bad kind'}
+    if len(_controls) >= MAX_CONTROLS:
+        return {'ok': False, 'error': 'control limit reached'}
+    used = set(c['cc'] for c in _controls)
+    cc = 0
+    while cc < 128 and cc in used:
+        cc += 1
+    _controls.append({
+        'id': len(_controls) + 1,
+        'kind': kind,
+        'label': '',
+        'cc': cc if cc < 128 else 0,
+        'ch': 1,
+        'value': 0,
+    })
+    _renumber()
+    _controls[-1]['label'] = _label_for(_controls[-1])
+    _save_temp()
+    return state()
+
+
+def remove_control(cid):
+    _ensure_loaded()
+    c = _control(cid)
+    if c is None:
+        return {'ok': False, 'error': 'no such control'}
+    _controls.remove(c)
+    _renumber()
+    _save_temp()
+    return state()
+
+
+def set_control(cid, cc=None, ch=None, label=None):
+    _ensure_loaded()
+    c = _control(cid)
+    if c is None:
+        return {'ok': False, 'error': 'no such control'}
+    if cc is not None and cc != '':
+        try:
+            cc = int(cc)
+        except Exception:
+            return {'ok': False, 'error': 'bad CC'}
+        if cc < 0 or cc > 127:
+            return {'ok': False, 'error': 'CC must be 0..127'}
+        c['cc'] = cc
+    if ch is not None and ch != '':
+        try:
+            ch = int(ch)
+        except Exception:
+            return {'ok': False, 'error': 'bad channel'}
+        if ch < 1 or ch > 16:
+            return {'ok': False, 'error': 'Channel must be 1..16'}
+        c['ch'] = ch
+    if label is not None:
+        label = (label or '').strip()
+        if not label:
+            label = _label_for(c)
+        c['label'] = label[:_MAX_LABEL]
+    _save_temp()
+    return state()
+
+
+def send_control(cid, value=None, persist=True):
+    _ensure_loaded()
+    c = _control(cid)
+    if c is None:
+        return {'ok': False, 'error': 'no such control'}
+    if value not in (None, ''):
+        try:
+            value = int(value)
+        except Exception:
+            return {'ok': False, 'error': 'bad value'}
+        if value < 0 or value > 127:
+            return {'ok': False, 'error': 'value must be 0..127'}
+        c['value'] = value
+    elif c['kind'] in ('button', 'switch'):
+        c['value'] = 0 if c['value'] else 127
+    try:
+        hw.send_cc((c['ch'] - 1) & 0x0F, c['cc'], c['value'])
+    except Exception:
+        return {'ok': False, 'error': 'send failed'}
+    if persist:
+        _save_temp()
+    return state()
 
 
 # ---- state -----------------------------------------------------------
@@ -139,6 +275,8 @@ def state():
         'presets': presets,
         'types': list(TYPES),
         'channels': list(range(1, 17)),
+        'controls': _controls_state(),
+        'kinds': list(KINDS),
         'ble_available': ble_midi.available(),
         'ble_connected': ble_midi.is_connected(),
     }
@@ -203,30 +341,32 @@ def set_pin(pin, type_, cc, ch, pair=None):
 
     if type_ == 'Encoder':
         try:
-            pair = int(pair)
+            pair = int(pair) if pair not in (None, '', 'None') else None
         except Exception:
-            return {'ok': False, 'error': 'encoder needs a second pin'}
-        if pair == pin or pair not in MidiScreen._cfg:
-            return {'ok': False, 'error': 'bad encoder pair'}
-        pc = MidiScreen._cfg[pair]
-        if pc['type'] not in ('—', 'encB'):
-            return {'ok': False, 'error': 'GPIO{} is busy'.format(pair)}
-        # Steal the pin from another encoder if it was its partner.
-        if pc['type'] == 'encB' and pc.get('pair') not in (None, pin):
-            other = pc['pair']
-            freed = _free_peer(other)
-            if freed is not None:
-                touched.append(freed)
-        pc['type'] = 'encB'
-        pc['pair'] = pin
-        pc['cc'] = cc
-        pc['channel'] = ch
+            pair = None
+        if pair is not None:
+            if pair == pin or pair not in MidiScreen._cfg:
+                return {'ok': False, 'error': 'bad encoder pair'}
+            pc = MidiScreen._cfg[pair]
+            if pc['type'] not in ('—', 'encB'):
+                return {'ok': False, 'error': 'GPIO{} is busy'.format(pair)}
+            # Steal the pin from another encoder if it was its partner.
+            if pc['type'] == 'encB' and pc.get('pair') not in (None, pin):
+                other = pc['pair']
+                freed = _free_peer(other)
+                if freed is not None:
+                    touched.append(freed)
+            pc['type'] = 'encB'
+            pc['pair'] = pin
+            pc['cc'] = cc
+            pc['channel'] = ch
         c = MidiScreen._cfg[pin]
         c['type'] = 'Encoder'
         c['cc'] = cc
         c['channel'] = ch
         c['pair'] = pair
-        touched.append(pair)
+        if pair is not None:
+            touched.append(pair)
     else:
         c = MidiScreen._cfg[pin]
         c['type'] = type_
@@ -268,11 +408,14 @@ def set_mode(mode):
 
 # ---- presets ---------------------------------------------------------
 def load(name):
+    global _controls
     _ensure_loaded()
     if name == MIDI_DEFAULT_PRESET:
         MidiScreen._apply_preset(None)
         MidiScreen._current_preset = name
         MidiScreen._dirty = False
+        _controls = midi_save.load_controls(name)
+        _renumber()
         _save_temp()
         MidiScreen._rebuild_all(_host)
         return state()
@@ -282,6 +425,8 @@ def load(name):
     MidiScreen._apply_preset(pins)
     MidiScreen._current_preset = name
     MidiScreen._dirty = False
+    _controls = midi_save.load_controls(name)
+    _renumber()
     _save_temp()
     MidiScreen._rebuild_all(_host)
     return state()
@@ -295,7 +440,7 @@ def save(name, overwrite=False):
     if not overwrite and midi_save.exists(name) and \
             name != MidiScreen._current_preset:
         return {'ok': False, 'error': 'preset exists'}
-    if not midi_save.save(name, MidiScreen._cfg):
+    if not midi_save.save(name, MidiScreen._cfg, _controls):
         return {'ok': False, 'error': 'save failed'}
     MidiScreen._current_preset = name
     MidiScreen._dirty = False
@@ -304,6 +449,7 @@ def save(name, overwrite=False):
 
 
 def delete(name):
+    global _controls
     _ensure_loaded()
     if not name or name == MIDI_DEFAULT_PRESET:
         return {'ok': False, 'error': 'reserved preset'}
@@ -311,6 +457,8 @@ def delete(name):
         return {'ok': False, 'error': 'delete failed'}
     if MidiScreen._current_preset == name:
         MidiScreen._current_preset = MIDI_DEFAULT_PRESET
+        _controls = midi_save.load_controls(MIDI_DEFAULT_PRESET)
+        _renumber()
         _save_temp()
     return state()
 
