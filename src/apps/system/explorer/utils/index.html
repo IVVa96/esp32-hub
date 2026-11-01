@@ -277,7 +277,6 @@
   </a>
   <div class="run"><span class="dot" id="dot"></span><span id="modeInfo">offline</span></div>
   <div class="meta">
-    <button class="tiny" id="menuBtn" title="Web portal main menu">MENU</button>
     <span class="chip" id="freeInfo">-</span>
     <button class="tiny" id="toolBtn" title="Download file_explorer.py for USB access">USB TOOL</button>
     <button class="tiny danger" id="sleepBtn" title="Deep sleep: Wi-Fi turns off, time is kept. Wake with the BOOT button">SLEEP</button>
@@ -945,7 +944,6 @@ async function downloadUsbTool() {
 }
 
 function init() {
-  $("menuBtn").onclick = () => { window.location.href = "/"; };
   $("upBtn").onclick = () => load(dirname(state.path));
   $("refreshBtn").onclick = refresh;
   $("mkdirBtn").onclick = mkdir;

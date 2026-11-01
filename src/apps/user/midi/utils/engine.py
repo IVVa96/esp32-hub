@@ -21,6 +21,21 @@ KINDS = ('fader', 'button', 'switch')
 MAX_CONTROLS = 16
 COLS = 8          # Surface grid columns (shared with the web page).
 
+
+def set_cols(n):
+    """Grid column count used for layout; the page reports its own width."""
+    global COLS
+    try:
+        n = int(n)
+    except Exception:
+        return
+    if n < 2:
+        n = 2
+    elif n > 12:
+        n = 12
+    COLS = n
+
+
 _MAX_NAME = 24
 _MAX_LABEL = 16
 
@@ -339,8 +354,22 @@ def send_control(cid, value=None, persist=True, lite=False):
         if value < 0 or value > 127:
             return {'ok': False, 'error': 'value must be 0..127'}
         c['value'] = value
-    elif c['kind'] in ('button', 'switch'):
+    elif c['kind'] == 'switch':
         c['value'] = 0 if c['value'] else 127
+    elif c['kind'] == 'button':
+        # Momentary press: send on, then off straight away.
+        try:
+            ch = (c['ch'] - 1) & 0x0F
+            hw.send_cc(ch, c['cc'], 127)
+            hw.send_cc(ch, c['cc'], 0)
+        except Exception:
+            return {'ok': False, 'error': 'send failed'}
+        c['value'] = 0
+        if persist:
+            _save_temp()
+        if lite:
+            return {'ok': True}
+        return state()
     try:
         hw.send_cc((c['ch'] - 1) & 0x0F, c['cc'], c['value'])
     except Exception:
@@ -353,7 +382,9 @@ def send_control(cid, value=None, persist=True, lite=False):
 
 
 # ---- state -----------------------------------------------------------
-def state():
+def state(cols=None):
+    if cols not in (None, ''):
+        set_cols(cols)
     _ensure_loaded()
     pins = []
     for p in MIDI_AVAILABLE_PINS:

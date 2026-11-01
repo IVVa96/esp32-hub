@@ -807,6 +807,8 @@ async def _route(method, path, query, headers, reader, writer):
             return
         action = query.get('action', 'state')
         try:
+            if query.get('cols'):
+                midi_engine.set_cols(query.get('cols'))
             if action == 'state':
                 try:
                     midi_engine.start()

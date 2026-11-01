@@ -90,7 +90,7 @@
   #grid[hidden],#setupPane[hidden],.surface[hidden]{display:none}
   .surface{--cell:116px;display:grid;grid-template-columns:repeat(8,var(--cell));
     margin-top:2px;
-    grid-auto-rows:var(--cell);gap:6px;margin-top:10px;touch-action:none;
+    grid-auto-rows:var(--cell);gap:6px;margin-top:10px;touch-action:pan-y;
     -webkit-user-select:none;user-select:none;justify-content:start}
   .ctl{border:1px solid var(--line);background:var(--panel2);padding:5px;
     box-shadow:inset 0 0 0 1px #000;min-width:0;overflow:hidden}
@@ -220,7 +220,7 @@ function toast(msg, isErr) {
 var _net = Promise.resolve();
 
 function _send(q, method) {
-  return fetch("/api/midi?" + q, {
+  return fetch("/api/midi?" + q + "&cols=" + SURF_COLS, {
     method: method || "GET",
     cache: "no-store"
   }).then(function (r) {
@@ -332,7 +332,7 @@ function faderPaint(el, v) {
   el.querySelector(".fader-fill").style.height = (y + 6) + "px";
   el.querySelector(".fader-cap").style.bottom = y + "px";
   var vv = el.querySelector(".fader-val");
-  if (vv) vv.textContent = v;
+  if (vv) vv.textContent = Math.round(v / 127 * 100);
 }
 
 function bindFader(el, c) {
@@ -414,7 +414,8 @@ function drawSurface(d) {
         '<div class="fader"><div class="fader-track">' +
         '<div class="fader-fill"></div>' +
         '<div class="fader-cap"></div></div></div>' +
-        '<div class="fader-val">' + c.value + "</div>" + ctlTags(c);
+        '<div class="fader-val">' + Math.round(c.value / 127 * 100) +
+        "</div>" + ctlTags(c);
       bindFader(el, c);
     } else {
       el.className = "ctl pad-card";
@@ -430,11 +431,12 @@ function drawSurface(d) {
 }
 
 var SURF_CELL = 116;
-var SURF_COLS = 8;
+var SURF_COLS = window.innerWidth <= 720 ? 3 : 8;
 
 function sizeSurface() {
   var wrap = $("surfaceWrap");
   var gap = 6;
+  SURF_COLS = window.innerWidth <= 720 ? 3 : 8;
   var w = wrap.clientWidth;
   if (!w) return;
   var cell = Math.floor((w - (SURF_COLS - 1) * gap) / SURF_COLS);
@@ -499,6 +501,7 @@ function previewLayout(id, slot) {
 
 var moveDrag = null;
 var DWELL_MS = 650;
+var HOLD_MS = 420;
 
 function placePh(ph, slot, span) {
   ph.style.gridColumn = String((slot % SURF_COLS) + 1);
@@ -529,7 +532,6 @@ $("surfaceWrap").addEventListener("pointerdown", function (e) {
   if (!card || !card.getAttribute("data-cid")) return;
   if (e.target.closest(".fader-track") ||
       e.target.closest("[data-k=trigger]")) return;
-  e.preventDefault();
   var r = card.getBoundingClientRect();
   moveDrag = {
     card: card,
@@ -539,27 +541,53 @@ $("surfaceWrap").addEventListener("pointerdown", function (e) {
     offX: e.clientX - r.left,
     offY: e.clientY - r.top,
     moved: false,
+    active: false,
     pushed: false,
     slot: null,
     ph: null,
     timer: null,
+    hold: null,
+    lx: e.clientX,
+    ly: e.clientY,
     span: card.classList.contains("fader-card") ? 2 : 1,
   };
+  moveDrag.startSlot = slotFromPoint(e.clientX - moveDrag.offX,
+                                     e.clientY - moveDrag.offY);
   try { card.setPointerCapture(e.pointerId); } catch (err) {}
+  moveDrag.hold = setTimeout(startDrag, HOLD_MS);
 });
+
+function cancelHold(d) {
+  if (d && d.hold) { clearTimeout(d.hold); d.hold = null; }
+}
+
+function startDrag() {
+  var d = moveDrag;
+  if (!d || d.active) return;
+  cancelHold(d);
+  d.active = true;
+  d.moved = true;
+  d.card.classList.add("dragging");
+  d.ph = document.createElement("div");
+  d.ph.className = "ph";
+  $("surfaceWrap").appendChild(d.ph);
+  d.slot = slotFromPoint(d.lx - d.offX, d.ly - d.offY);
+  placePh(d.ph, d.slot, d.span);
+}
+
+$("surfaceWrap").addEventListener("touchmove", function (e) {
+  if (moveDrag && moveDrag.active && e.cancelable) e.preventDefault();
+}, { passive: false });
 
 $("surfaceWrap").addEventListener("pointermove", function (e) {
   if (!moveDrag) return;
-  if (!moveDrag.moved) {
+  moveDrag.lx = e.clientX;
+  moveDrag.ly = e.clientY;
+  if (!moveDrag.active) {
     var dx = e.clientX - moveDrag.x;
     var dy = e.clientY - moveDrag.y;
-    if (dx * dx + dy * dy < 64) return;
-    moveDrag.moved = true;
-    moveDrag.card.classList.add("dragging");
-    var ph = document.createElement("div");
-    ph.className = "ph";
-    $("surfaceWrap").appendChild(ph);
-    moveDrag.ph = ph;
+    if (dx * dx + dy * dy > 64) cancelHold(moveDrag);
+    return;
   }
   var slot = slotFromPoint(e.clientX - moveDrag.offX,
                            e.clientY - moveDrag.offY);
@@ -577,10 +605,14 @@ function endMove(e) {
   if (!moveDrag) return;
   var d = moveDrag;
   moveDrag = null;
+  cancelHold(d);
   clearTimeout(d.timer);
   d.card.classList.remove("dragging");
   if (d.ph && d.ph.parentNode) d.ph.parentNode.removeChild(d.ph);
-  if (!d.moved || d.slot === null) { apply(S); return; }
+  if (!d.active || d.slot === null || d.slot === d.startSlot) {
+    apply(S);
+    return;
+  }
   var act = d.pushed ? "movectl" : "swapctl";
   rawPost("action=" + act + "&id=" + d.id + "&slot=" + d.slot).then(function (r) {
     if (r && r.ok) apply(r); else apply(S);
@@ -798,22 +830,63 @@ $("ctlGrid").addEventListener("click", function (e) {
   }
 });
 
+function ctlById(cid) {
+  var list = (S && S.controls) || [];
+  for (var i = 0; i < list.length; i++) {
+    if (String(list[i].id) === String(cid)) return list[i];
+  }
+  return null;
+}
+
+var padHeld = null;
+
+$("surfaceWrap").addEventListener("pointerdown", function (e) {
+  var b = e.target.closest ? e.target.closest("[data-k=trigger]") : null;
+  if (!b) return;
+  var card = b.closest(".ctl");
+  if (!card) return;
+  var c = ctlById(card.getAttribute("data-cid"));
+  if (!c) return;
+  e.preventDefault();
+  e.stopPropagation();
+  b.classList.add("flash");
+  setTimeout(function () { b.classList.remove("flash"); }, 160);
+  if (c.kind !== "button") return;
+  padHeld = b;
+  b.classList.add("on");
+  rawPost("action=sendctl&id=" + c.id + "&value=127&persist=1");
+});
+
+function padEnd() {
+  var b = padHeld;
+  if (!b) return;
+  padHeld = null;
+  b.classList.remove("on");
+  var card = b.closest(".ctl");
+  if (!card) return;
+  rawPost("action=sendctl&id=" + card.getAttribute("data-cid") +
+          "&value=0&persist=1");
+}
+
+$("surfaceWrap").addEventListener("pointerup", padEnd);
+$("surfaceWrap").addEventListener("pointercancel", padEnd);
+$("surfaceWrap").addEventListener("pointerleave", padEnd);
+
 $("surfaceWrap").addEventListener("click", function (e) {
   var b = e.target.closest ? e.target.closest("[data-k=trigger]") : null;
   if (!b) return;
   var card = b.closest(".ctl");
   if (!card) return;
   var cid = card.getAttribute("data-cid");
-  b.classList.add("flash");
-  setTimeout(function () { b.classList.remove("flash"); }, 160);
+  var c0 = ctlById(cid);
+  if (!c0 || c0.kind !== "switch") return;
   rawPost("action=sendctl&id=" + cid).then(function (d) {
     if (!d || !d.ok) return;
-    var list = d.controls || [];
-    var c = null;
+    var list = d.controls || [], c = null;
     for (var i = 0; i < list.length; i++) {
       if (String(list[i].id) === String(cid)) c = list[i];
     }
-    if (!c || c.kind !== "switch") return;
+    if (!c) return;
     b.textContent = c.value ? "ON" : "OFF";
     b.className = "padbtn" + (c.value ? " on" : "");
   });
@@ -855,7 +928,12 @@ $("usbBtn").onclick = function () { post("action=mode&mode=wire"); };
 $("bleBtn").onclick = function () { post("action=mode&mode=ble"); };
 
 api("action=state");
-window.addEventListener("resize", function () { sizeSurface(); });
+window.addEventListener("resize", function () {
+  var old = SURF_COLS;
+  drawSurface(S || { controls: [] });
+  sizeSurface();
+  if (S && old !== SURF_COLS) api("action=state");
+});
 document.addEventListener("visibilitychange", function () {
   if (!document.hidden) api("action=state");
 });
