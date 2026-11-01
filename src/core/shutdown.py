@@ -31,8 +31,14 @@ async def _phase_goodbye():
     except Exception:
         pass
 
-    # Только надпись, строго по центру экрана.
-    _center_text(SHUTDOWN_TEXT, (ssd.height - 8) // 2, WHITE, 1)
+    # Маскот над надписью: крупный серый паук с оранжевым крестом.
+    try:
+        from core import mascot
+        mascot.draw_goodbye((ssd.width - mascot.GOODBYE_SIZE) // 2, 94)
+    except Exception as e:
+        error("mascot:", e)
+
+    _center_text(SHUTDOWN_TEXT, 218, WHITE, 1)
     await asyncio.sleep_ms(SHUTDOWN_TEXT_MS)
 
 

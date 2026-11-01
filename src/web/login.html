@@ -28,8 +28,8 @@
   }
   .box::before{left:-3px;top:-3px;border-right:0;border-bottom:0}
   .box::after{right:-3px;bottom:-3px;border-left:0;border-top:0}
-  .lock{font-size:26px;line-height:1;color:var(--accent);margin-bottom:14px}
-  h1{margin:0 0 20px;font-size:13px;letter-spacing:1px;color:var(--text)}
+  h1{margin:0 0 20px;font-size:13px;letter-spacing:1px;color:var(--text);
+    text-align:center}
   label{display:block;color:var(--muted);font-size:9px;letter-spacing:1px;margin-bottom:7px}
   input{
     width:100%;padding:11px 12px;background:var(--panel2);border:1px solid var(--line2);
@@ -51,7 +51,6 @@
 </head>
 <body>
 <form class="box" method="post" action="/login">
-  <div class="lock">[#]</div>
   <h1>ESP32 MULTITOOL</h1>
   <label for="password">PASSWORD</label>
   <input id="password" name="password" type="password" required
