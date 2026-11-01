@@ -9,9 +9,8 @@ import gc
 
 from apps.system.explorer.utils import fsapi
 from apps.system.explorer.utils import mounts
-from apps.system.explorer.utils import dns
 from apps.system.explorer.config import (
-    FILES_HTTP_PORT, WEB_HOST, WEB_PASSWORD,
+    FILES_HTTP_PORT, WEB_PASSWORD,
 )
 from core import power
 from core import web_mode
@@ -26,7 +25,9 @@ _USB_HELP_PATH = 'apps/system/explorer/utils/usb.html'
 _USB_TOOL_PATH = 'apps/system/explorer/utils/usb_tool.py'
 _PAGES = {}
 _server = None
+_KEEP = False
 _SESSIONS = set()
+_FS_CACHE = {'path': None, 'free': 0, 'total': 0, 't': 0}
 _COOKIE = 'esp_sid'
 
 # Максимальный размер файла, который разрешено открывать/сохранять
@@ -38,7 +39,7 @@ STATUS = {
     'mode': None,        # 'sta' / 'ap' / 'usb'
     'ssid': '',
     'ip': '',
-    'host': WEB_HOST,
+    'host': '',
     'port': FILES_HTTP_PORT,
     'error': '',
 }
@@ -216,8 +217,22 @@ def _screen_name():
         return ''
 
 
+def _fs_stats(path='/'):
+    """Cached (free, total): statvfs on the internal FS costs ~0.6 s."""
+    now = time.ticks_ms()
+    if (_FS_CACHE['path'] == path and
+            time.ticks_diff(now, _FS_CACHE['t']) < 8000):
+        return _FS_CACHE['free'], _FS_CACHE['total']
+    free, total = fsapi.free(path)
+    _FS_CACHE['path'] = path
+    _FS_CACHE['free'] = free
+    _FS_CACHE['total'] = total
+    _FS_CACHE['t'] = now
+    return free, total
+
+
 def _info():
-    free, total = fsapi.free('/')
+    free, total = _fs_stats('/')
     hh, mm = time_sync.now_hm()
     data = {
         'ok': True,
@@ -229,7 +244,6 @@ def _info():
         'ssid': STATUS['ssid'],
         'ip': STATUS['ip'],
         'host': STATUS['host'],
-        'dns': dns.running(),
         'usb': False,
         'sd': False,
         'screen': _screen_name(),
@@ -243,7 +257,7 @@ def _info():
     try:
         data['sd'] = mounts.mounted()
         if data['sd']:
-            sf, st = fsapi.free(mounts.SD_ROOT)
+            sf, st = _fs_stats(mounts.SD_ROOT)
             data['sd_free'] = sf
             data['sd_total'] = st
             data['sd_size'] = _fmt_size(sf)
@@ -275,15 +289,16 @@ async def _send(writer, code, body=b'', ctype='application/json; charset=utf-8',
     head = 'HTTP/1.1 {} {}\r\n'.format(code, reasons.get(code, 'OK'))
     head += 'Content-Type: {}\r\n'.format(ctype)
     head += 'Content-Length: {}\r\n'.format(len(body))
-    head += 'Connection: close\r\n'
+    head += 'Connection: {}\r\n'.format('keep-alive' if _KEEP else 'close')
     head += 'Cache-Control: no-store\r\n'
     if extra:
         for k, v in extra.items():
             head += '{}: {}\r\n'.format(k, v)
     head += '\r\n'
-    writer.write(head.encode())
+    data = head.encode()
     if body:
-        writer.write(body)
+        data = data + body
+    writer.write(data)
     try:
         await writer.drain()
     except Exception:
@@ -304,13 +319,37 @@ async def _err(writer, code, msg):
 async def _handle(reader, writer):
     try:
         if not STATUS.get('running'):
-            # Сервер остановлен — вежливо закрываем
+            # Сервер остановлен - вежливо закрываем
             await _send(writer, 503, '{"ok":false,"error":"stopped"}')
             return
 
-        line = await reader.readline()
-        if not line:
-            return
+        while True:
+            try:
+                line = await asyncio.wait_for(reader.readline(), 8)
+            except Exception:
+                return
+            if not line:
+                return
+            if not await _one(reader, writer, line):
+                return
+    except Exception as e:
+        try:
+            await _err(writer, 500, str(e))
+        except Exception:
+            pass
+    finally:
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+
+async def _one(reader, writer, line):
+    """Handle one request; True when the socket may be reused."""
+    global _KEEP
+    _KEEP = False
+    try:
         try:
             text = line.decode().strip()
         except Exception:
@@ -340,21 +379,20 @@ async def _handle(reader, writer):
                 k, v = hs.split(':', 1)
                 headers[k.strip().lower()] = v.strip()
 
+        _KEEP = (method == 'GET' and _ver == 'HTTP/1.1' and
+                 headers.get('connection', '').lower() != 'close')
         await _route(method, path, query, headers, reader, writer)
     except Exception as e:
+        _KEEP = False
         try:
             await _err(writer, 500, str(e))
         except Exception:
             pass
-    finally:
-        try:
-            writer.close()
-            await writer.wait_closed()
-        except Exception:
-            pass
+    return _KEEP
 
 
 async def _route(method, path, query, headers, reader, writer):
+    global _KEEP
     # --- вход в веб-интерфейс ---
     if path == '/login' or path == '/login/':
         if method == 'GET':
@@ -526,6 +564,7 @@ async def _route(method, path, query, headers, reader, writer):
                 if b'\x00' in first:
                     await _err(writer, 415, 'binary file')
                     return
+                _KEEP = False
                 writer.write(
                     ('HTTP/1.1 200 OK\r\n'
                      'Content-Type: text/plain; charset=utf-8\r\n'
@@ -662,6 +701,7 @@ async def _route(method, path, query, headers, reader, writer):
         try:
             with open(p, 'rb') as f:
                 f.seek(start)
+                _KEEP = False
                 left = length
                 head = 'HTTP/1.1 {} {}\r\n'.format(
                     code, 'Partial Content' if code == 206 else 'OK')
@@ -999,12 +1039,7 @@ def start(mode='sta', ssid='', ip=''):
     STATUS['ssid'] = ssid
     STATUS['ip'] = ip
     STATUS['error'] = ''
-    # Имя espui.esp: мини-DNS поднимаем сразу, чтобы оно работало
-    # и в AP, и в STA (если DNS роутера указывает на плату).
-    try:
-        dns.start(ip)
-    except Exception as e:
-        STATUS['error'] = 'dns: {}'.format(e)
+    STATUS['host'] = ip or ''
     if STATUS['running']:
         power.remember_web(mode, ssid, ip, True)
         return True
@@ -1015,7 +1050,6 @@ def start(mode='sta', ssid='', ip=''):
     except Exception as e:
         STATUS['running'] = False
         STATUS['error'] = 'task: {}'.format(e)
-        dns.stop()
         return False
     power.remember_web(mode, ssid, ip, True)
     return True
@@ -1027,10 +1061,6 @@ def stop():
     _SESSIONS.clear()
     power.remember_web(STATUS.get('mode'), STATUS.get('ssid'),
                        STATUS.get('ip'), False)
-    try:
-        dns.stop()
-    except Exception:
-        pass
     try:
         if _server is not None:
             _server.close()

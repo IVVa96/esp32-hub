@@ -23,7 +23,7 @@ import core.status_bar as status_bar
 
 from apps.system.explorer.utils import server
 from apps.system.explorer.config import (
-    AP_SSID, AP_PASSWORD, FILES_HTTP_PORT, WEB_HOST,
+    AP_SSID, AP_PASSWORD, FILES_HTTP_PORT, WEB_PASSWORD,
 )
 
 
@@ -82,7 +82,7 @@ class WebScreen(Screen):
         if hint is not None:
             self._hint = hint
             self._hint_color = hint_color
-        key = (self._mode, self._url, self._ip, self._hint)
+        key = (self._mode, self._url, self._ip)
         if not force and key == self._panel_key:
             return
         self._panel_key = key
@@ -91,7 +91,7 @@ class WebScreen(Screen):
 
     def _panel_line(self, y, label, value, color):
         text(label, 24, y, DIM)
-        text(str(value)[:19], 64, y, color)
+        text(str(value)[:15], 100, y, color)
 
     def _draw_panel(self):
         x, y, w, h = MARGIN, 166, SCREEN_W - 2 * MARGIN, 92
@@ -100,9 +100,13 @@ class WebScreen(Screen):
         text('STATUS', x + 8, y + 6, DIM)
 
         self._panel_line(y + 24, 'MODE', self._mode, WHITE)
-        self._panel_line(y + 42, 'URL', self._url, AMBER)
-        self._panel_line(y + 60, 'IP', self._ip, WHITE)
-        self._panel_line(y + 78, 'HINT', self._hint, self._hint_color)
+        self._panel_line(y + 42, 'IP', self._ip, WHITE)
+        self._panel_line(y + 60, 'UI PASS', WEB_PASSWORD, AMBER)
+        ap = (server.running() and
+              server.STATUS.get('mode') == 'ap')
+        self._panel_line(y + 78, 'AP PASS',
+                         AP_PASSWORD if ap else '-',
+                         AMBER if ap else DIM)
 
     def _update_status(self):
         if not self._alive or not self._drawn or self._busy:
@@ -119,7 +123,7 @@ class WebScreen(Screen):
                 mtxt = 'ONLINE'
             self._set_panel(
                 mode=mtxt[:19],
-                url='http://{}/'.format(st.get('host') or WEB_HOST),
+                url='http://{}/'.format(st.get('host') or st.get('ip') or ''),
                 ip=st.get('ip') or '-',
                 hint='OPEN IN BROWSER',
                 hint_color=WHITE,
@@ -244,7 +248,7 @@ class WebScreen(Screen):
             except Exception as e:
                 error('web ntp:', e)
             self._set_panel(mode='STA ' + ssid, ip=ip,
-                            url='http://{}/'.format(WEB_HOST),
+                            url='http://{}/'.format(ip or ''),
                             hint='OPEN IN BROWSER')
         except Exception as e:
             error('sta:', e)
@@ -280,9 +284,15 @@ class WebScreen(Screen):
                 ap.config(essid=AP_SSID, password=AP_PASSWORD)
             self._ap = ap
             ip = ap.ifconfig()[0]
+            # Wait until the AP has a real address.
+            for _ in range(20):
+                if ip and ip != '0.0.0.0':
+                    break
+                await asyncio.sleep_ms(100)
+                ip = ap.ifconfig()[0]
             server.start('ap', AP_SSID, ip)
             self._set_panel(mode='AP ' + AP_SSID, ip=ip,
-                            url='http://{}/'.format(WEB_HOST),
+                            url='http://{}/'.format(ip or ''),
                             hint='OPEN IN BROWSER')
         except Exception as e:
             error('ap:', e)
