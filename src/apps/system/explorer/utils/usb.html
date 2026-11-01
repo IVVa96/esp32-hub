@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>USB TOOL — ESP32 Files</title>
+<style>
+  :root{
+    --bg:#000000; --panel:#0a0a0b; --panel2:#121214; --line:#3d3d42;
+    --line2:#5a5a62; --text:#f1f0f0; --muted:#bcbbbb; --dim:#8e8b8b;
+    --accent:#ff8c1a; --accent-ink:#000000; --ok:#7dff9a; --danger:#ff5c5c;
+    --mono:"JetBrains Mono","IBM Plex Mono",ui-monospace,SFMono-Regular,
+      Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font:13px/1.55 var(--mono)}
+  body{min-height:100vh}
+  a{color:var(--accent);text-decoration:none}
+  header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    padding:12px 18px;border-bottom:1px solid var(--line);
+    background:#000;position:sticky;top:0;z-index:5}
+  .logo{width:20px;height:20px;color:var(--accent)}
+  .brand{display:flex;align-items:center;gap:9px;color:var(--text);
+    font-weight:700;letter-spacing:.14em;font-size:13px}
+  .brand .slash{color:var(--dim);margin:0 2px}
+  .tag{margin-left:auto;border:1px solid var(--line2);padding:5px 8px;
+    color:var(--accent);font-size:10px;letter-spacing:.12em}
+  main{max-width:860px;margin:0 auto;padding:26px 18px 64px}
+  h1{font-size:25px;line-height:1.2;letter-spacing:.02em;margin:0 0 6px}
+  h1 span{color:var(--accent)}
+  .lead{color:var(--muted);margin:0 0 18px;max-width:640px}
+  .note{border:1px solid var(--line2);background:var(--panel);color:var(--text);
+    padding:11px 13px;margin:0 0 18px;font-size:12px}
+  .note b{color:var(--accent)}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 26px}
+  button,.btn{font:600 11px/1 var(--mono);letter-spacing:.08em;
+    text-transform:uppercase;padding:10px 13px;background:var(--panel2);
+    color:var(--text);border:1px solid var(--line2);border-radius:0;
+    cursor:pointer;display:inline-flex;align-items:center;gap:6px;
+    box-shadow:2px 2px 0 #000}
+  button:hover,.btn:hover{background:var(--text);color:var(--bg);
+    border-color:var(--text)}
+  button:active,.btn:active{transform:translate(2px,2px);box-shadow:none}
+  .btn.primary,button.primary{background:var(--accent);color:var(--accent-ink);
+    border-color:var(--accent)}
+  .btn.primary:hover,button.primary:hover{background:#ffb45e;color:var(--accent-ink)}
+  .step{display:grid;grid-template-columns:40px minmax(0,1fr);gap:12px;
+    border:1px solid var(--line);background:var(--panel);padding:14px;
+    margin:0 0 10px;position:relative;box-shadow:3px 3px 0 rgba(0,0,0,.5)}
+  .step::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;
+    background:var(--accent);opacity:.65}
+  .num{width:34px;height:34px;display:flex;align-items:center;
+    justify-content:center;background:var(--bg);border:1px solid var(--line2);
+    color:var(--accent);font-size:12px;font-weight:700}
+  .step h2{font-size:13px;margin:2px 0 5px;letter-spacing:.04em;
+    text-transform:uppercase}
+  .step p{margin:0 0 8px;color:var(--muted)}
+  .step p:last-child{margin-bottom:0}
+  code{color:var(--text);background:var(--bg);border:1px solid var(--line);
+    padding:1px 5px;font-size:12px}
+  .cmd{position:relative;margin:8px 0 0;background:var(--bg);
+    border:1px solid var(--line2)}
+  .cmd pre{margin:0;padding:11px 74px 11px 12px;overflow-x:auto;
+    color:var(--ok);font:12px/1.6 var(--mono);white-space:pre}
+  .cmd .copy{position:absolute;right:6px;top:6px;padding:5px 7px;font-size:9px;
+    background:var(--panel2);box-shadow:1px 1px 0 #000}
+  .tip{color:var(--dim);font-size:11px;margin-top:6px}
+  .links{border-top:1px solid var(--line);margin-top:26px;padding-top:16px;
+    display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .links span{color:var(--dim);margin-right:auto;font-size:11px}
+  .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);
+    background:var(--panel2);border:1px solid var(--line2);color:var(--text);
+    padding:9px 14px;opacity:0;pointer-events:none;transition:opacity .2s;
+    z-index:20;font-size:12px;max-width:90vw}
+  .toast.show{opacity:1}
+  @media(max-width:560px){
+    h1{font-size:20px}
+    .step{grid-template-columns:32px minmax(0,1fr);padding:12px}
+    .num{width:28px;height:28px;font-size:11px}
+    main{padding:20px 14px 48px}
+    .cmd pre{padding-right:12px;padding-top:34px}
+    .cmd .copy{top:6px;right:6px}
+  }
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="/">
+    <svg class="logo" width="20" height="20" viewBox="0 0 12 12"
+         shape-rendering="crispEdges" aria-hidden="true">
+      <path fill="currentColor" d="M1 2h4v1h1v1h5v7H1zM2 5h8v5H2z" fill-rule="evenodd"/>
+    </svg>
+    <span>ESP32<span class="slash">/</span>FILES</span>
+  </a>
+  <span class="tag">USB TOOL / INSTRUCTION</span>
+</header>
+
+<main>
+  <h1>USB file explorer <span>file_explorer.py</span></h1>
+  <p class="lead">The file is downloading. This is a standalone PC script: the web interface
+    is built in, no repository or extra files are needed.</p>
+
+  <div class="note" id="saveNote">
+    <b>Where is the file?</b> If the browser asked for a location, it is there. If not, check the
+    "Downloads" folder. To make the browser ask every time, enable
+    "Ask where to save each file" in Chrome download settings.
+  </div>
+
+  <div class="actions">
+    <a class="btn primary" href="/api/usb-tool" download="file_explorer.py">DOWNLOAD AGAIN</a>
+    <a class="btn" href="/">BACK TO EXPLORER</a>
+  </div>
+
+  <section class="step">
+    <div class="num">01</div>
+    <div>
+      <h2>Connect the board via USB</h2>
+      <p>Use a data cable, not a charge-only cable. The board must
+        appear in the system as a COM port.</p>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="num">02</div>
+    <div>
+      <h2>Check Python and mpremote</h2>
+      <p>Python 3 for Windows is required. During installation check
+        <code>Add Python to PATH</code>. Then install mpremote:</p>
+      <div class="cmd">
+        <pre>python -m pip install mpremote</pre>
+        <button class="copy" data-copy="python -m pip install mpremote">COPY</button>
+      </div>
+      <p class="tip">If the <code>python</code> command is not found, try
+        <code>py -m pip install mpremote</code>.</p>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="num">03</div>
+    <div>
+      <h2>Open a terminal in the script folder</h2>
+      <p>For example, if the file is in Downloads:</p>
+      <div class="cmd">
+        <pre>cd "$env:USERPROFILE\Downloads"</pre>
+        <button class="copy" data-copy='cd "$env:USERPROFILE\Downloads"'>COPY</button>
+      </div>
+      <p class="tip">In File Explorer you can open the folder, click the address bar, type
+        <code>powershell</code>, then press Enter.</p>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="num">04</div>
+    <div>
+      <h2>Start the explorer</h2>
+      <p>Find the COM port: Device Manager → "Ports (COM & LPT)". Replace
+        the number below with your port:</p>
+      <div class="cmd">
+        <pre>python file_explorer.py --port COM6</pre>
+        <button class="copy" data-copy="python file_explorer.py --port COM6">COPY</button>
+      </div>
+      <p class="tip">You can omit the port: <code>python file_explorer.py</code>
+        will try to find the board automatically.</p>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="num">05</div>
+    <div>
+      <h2>Open the interface in the browser</h2>
+      <p>After launch the script prints the address. Open it:</p>
+      <div class="cmd">
+        <pre>http://127.0.0.1:8081/</pre>
+        <button class="copy" data-copy="http://127.0.0.1:8081/">COPY</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="step">
+    <div class="num">06</div>
+    <div>
+      <h2>Finish</h2>
+      <p>Press <code>Ctrl+C</code> in the terminal. USB access stops
+        the board application — when finished press <b>RESET</b> in the web interface
+        or reboot the board.</p>
+    </div>
+  </section>
+
+  <div class="note">
+    <b>Important:</b> close Thonny and other programs that hold the COM port.
+    The script runs on the PC, not the board. Wi-Fi downloads may go
+    to "Downloads" without a folder prompt — this is a browser limitation for plain HTTP.
+  </div>
+
+  <div class="links">
+    <span>ESP32 Files / USB mode</span>
+    <a class="btn" href="/api/usb-tool" download="file_explorer.py">DOWNLOAD</a>
+    <a class="btn" href="/">BACK TO FILES</a>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+document.querySelectorAll("[data-copy]").forEach((b) => {
+  b.addEventListener("click", async () => {
+    const text = b.getAttribute("data-copy");
+    try {
+      await navigator.clipboard.writeText(text);
+      toast("Copied");
+    } catch (e) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); toast("Copied"); }
+      catch (err) { toast("Copy failed"); }
+      ta.remove();
+    }
+  });
+});
+</script>
+</body>
+</html>

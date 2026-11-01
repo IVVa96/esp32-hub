@@ -1,0 +1,12 @@
+{
+  "urls": [
+    ["gui/primitives/__init__.py", "github:peterhinch/micropython-micro-gui/gui/primitives/__init__.py"],
+    ["gui/primitives/delay_ms.py", "github:peterhinch/micropython-micro-gui/gui/primitives/delay_ms.py"],
+    ["gui/primitives/encoder.py", "github:peterhinch/micropython-micro-gui/gui/primitives/encoder.py"],
+    ["gui/primitives/pushbutton.py", "github:peterhinch/micropython-micro-gui/gui/primitives/pushbutton.py"],
+    ["gui/primitives/virt_button.py", "github:peterhinch/micropython-micro-gui/gui/primitives/virt_button.py"],
+    ["gui/primitives/esp32_touch.py", "github:peterhinch/micropython-micro-gui/gui/primitives/esp32_touch.py"],
+    ["gui/primitives/rp2_touch.py", "github:peterhinch/micropython-micro-gui/gui/primitives/rp2_touch.py"]
+  ],
+  "version": "0.1"
+}

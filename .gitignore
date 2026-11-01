@@ -1,0 +1,16 @@
+# Local IDE / tooling
+/.vscode/
+/src.code-workspace
+/.mpy-workbench/
+/src/.mpy-workbench/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.mpy
+
+# Device runtime state and secrets
+/src/core/power_state.json
+/src/apps/system/wifi/utils/wifi_passwords.json
+/src/apps/user/midi/utils/midi_saves/
+/src/ble_secrets.json
