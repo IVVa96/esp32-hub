@@ -797,6 +797,48 @@ async def _route(method, path, query, headers, reader, writer):
             pass
         return
 
+    # --- MIDI web app: /api/midi?action=... ---
+    if path == '/api/midi':
+        try:
+            from apps.user.midi.utils import engine as midi_engine
+        except Exception as e:
+            await _err(writer, 500, 'midi engine: {}'.format(e))
+            return
+        action = query.get('action', 'state')
+        try:
+            if action == 'state':
+                try:
+                    midi_engine.start()
+                except Exception:
+                    pass
+                await _json_reply(writer, 200, midi_engine.state())
+            elif action == 'setpin' and method == 'POST':
+                await _json_reply(writer, 200, midi_engine.set_pin(
+                    query.get('pin'), query.get('type'),
+                    query.get('cc'), query.get('ch'),
+                    query.get('pair')))
+            elif action == 'mode' and method == 'POST':
+                await _json_reply(writer, 200,
+                                  midi_engine.set_mode(query.get('mode')))
+            elif action == 'load' and method == 'POST':
+                await _json_reply(writer, 200,
+                                  midi_engine.load(query.get('name')))
+            elif action == 'save' and method == 'POST':
+                await _json_reply(writer, 200, midi_engine.save(
+                    query.get('name'),
+                    overwrite=query.get('overwrite') == '1'))
+            elif action == 'delete' and method == 'POST':
+                await _json_reply(writer, 200,
+                                  midi_engine.delete(query.get('name')))
+            elif action == 'rename' and method == 'POST':
+                await _json_reply(writer, 200, midi_engine.rename(
+                    query.get('old'), query.get('new')))
+            else:
+                await _err(writer, 400, 'bad midi action')
+        except Exception as e:
+            await _err(writer, 500, 'midi: {}'.format(e))
+        return
+
     await _err(writer, 404, 'not found')
 
 

@@ -84,9 +84,11 @@
   .m-actions button{border:1px solid var(--line2);padding:10px 12px 9px;
     font-size:8px;background:var(--panel2);color:var(--text)}
   .m-actions button:hover{border-color:var(--text)}
-  .m-actions .primary{border-color:var(--accent);background:var(--accent);
-    color:var(--accent-ink)}
-  .m-actions .primary:hover{background:var(--accent-hi);border-color:var(--accent-hi)}
+  .m-actions .primary{border-color:var(--accent);background:var(--panel2);
+    color:var(--accent)}
+  .m-actions .primary:hover{border-color:var(--accent-hi);color:var(--accent-hi)}
+  .m-actions .web{border-color:var(--ok);background:var(--panel2);color:var(--ok)}
+  .m-actions .web:hover{border-color:#9dffb3;color:#9dffb3}
   .m-actions .ghost{color:var(--dim)}
   .note{margin-top:12px;font-size:7px;color:var(--dim);min-height:12px}
   .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:80;
@@ -133,7 +135,7 @@
     <div class="m-sub">CHOOSE VERSION</div>
     <div class="m-actions">
       <button class="primary" id="btnClassic">CLASSIC</button>
-      <button id="btnWeb">WEB</button>
+      <button class="web" id="btnWeb">WEB</button>
       <button class="ghost" id="btnCancel">CANCEL</button>
     </div>
     <div class="note" id="mNote"></div>
