@@ -44,7 +44,16 @@ def enter(dual=False):
     if _active:
         if dual == _dual:
             return
-        exit()
+        if dual:
+            # web -> dual: панель уже погашена, classic просто оживает.
+            _dual = True
+            return
+        # dual -> web: гасим classic, но сохранённый экран не теряем.
+        _dual = False
+        if _screen is None:
+            _screen = Screen.current_screen
+        _hide()
+        return
 
     _screen = Screen.current_screen
     _dual = dual
@@ -54,6 +63,11 @@ def enter(dual=False):
         # Совместный режим: classic-интерфейс остаётся на экране.
         return
 
+    _hide()
+
+
+def _hide():
+    """Погасить панель и ввод, не теряя сохранённый classic-экран."""
     if _screen is not None:
         try:
             _screen.on_hide()

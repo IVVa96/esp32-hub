@@ -38,7 +38,10 @@ def init_usb_midi():
     try:
         import usb.device
         from usb.device.midi import MIDIInterface
-        _usb_midi = MIDIInterface()
+        # Большие USB-буферы: дефолтные 16 байт вмещают всего 4 события, и
+        # быстрый поток CC (фейдер, wah) упирался в них и терял значения.
+        # 256 байт на передачу — 64 события, RAM хватает.
+        _usb_midi = MIDIInterface(rxlen=64, txlen=256)
         usb.device.get().init(_usb_midi, builtin_driver=True)
         _MIDI_OK = True
         print("USB-MIDI initialized")
@@ -58,30 +61,54 @@ def send_cc(channel, control, value):
 
     Всегда кладём в очередь: фактическую отправку делает flush-задача,
     поэтому BLE-notify не вызывается из ISR.
+
+    Для одного и того же контрола значение в очереди заменяется, а не
+    выстраивается в хвост: при быстром движении фейдера хост получает
+    свежее значение сразу, а не догоняет очередь из устаревших.
     """
-    if len(_midi_queue) < 32:
+    ch = channel & 0x0F
+    cc = control & 0x7F
+    val = value & 0x7F
+    q = _midi_queue
+    for i in range(len(q)):
+        e = q[i]
+        if e[0] == ch and e[1] == cc:
+            q[i] = (ch, cc, val)
+            return
+    if len(q) < 32:
         try:
-            _midi_queue.append(
-                (channel & 0x0F, control & 0x7F, value & 0x7F))
+            q.append((ch, cc, val))
         except Exception:
             pass
 
 
 async def _midi_flush_loop():
     while True:
-        while _midi_queue:
-            ch, cc, val = _midi_queue.pop(0)
+        if _midi_queue:
+            # Забираем пачку целиком: pop(0) на каждый элемент сдвигал список.
+            batch = _midi_queue[:]
+            del _midi_queue[:]
+            ble_midi_ready = False
             if _transport == 'ble':
                 try:
-                    ble_midi.send_cc(ch, cc, val)
+                    ble_midi_ready = ble_midi.is_connected()
                 except Exception:
-                    pass
-            elif _MIDI_OK and _usb_midi is not None:
-                try:
-                    _usb_midi.control_change(ch, cc, val)
-                except Exception:
-                    pass
-        await asyncio.sleep_ms(5)
+                    ble_midi_ready = False
+            usb = _usb_midi
+            usb_ready = _MIDI_OK and usb is not None
+            for ch, cc, val in batch:
+                if ble_midi_ready:
+                    try:
+                        ble_midi.send_cc(ch, cc, val)
+                    except Exception:
+                        pass
+                elif usb_ready:
+                    try:
+                        usb.control_change(ch, cc, val)
+                    except Exception:
+                        pass
+            continue
+        await asyncio.sleep_ms(1)
 
 
 def _ensure_flush():
@@ -193,7 +220,33 @@ class VirtSwInput:
 
 # ======================================================================
 # Pot — потенциометр (ADC 0..127, абсолютный)
+# Один общий опрос на все потенциометры: отдельная задача на каждый пин
+# будила планировщик 350 раз в секунду при семи ручках. Теперь одна
+# задача, один таймер, последовательный опрос.
 # ======================================================================
+_pots = []
+_pot_task = None
+
+
+def _ensure_pot_loop():
+    global _pot_task
+    if _pot_task is None or _pot_task.done():
+        try:
+            _pot_task = asyncio.create_task(_pot_loop())
+        except Exception:
+            _pot_task = None
+
+
+async def _pot_loop():
+    while _pots:
+        for p in _pots:
+            try:
+                p._poll()
+            except Exception:
+                pass
+        await asyncio.sleep_ms(MIDI_POLL_MS)
+
+
 class PotInput:
     def __init__(self, pin_num, cc, channel=0):
         self.cc      = cc
@@ -205,31 +258,28 @@ class PotInput:
             pass
         self._last = -1
         self._buf  = []
-        self._task = asyncio.create_task(self._loop())
+        self._acc  = 0
+        _pots.append(self)
+        _ensure_pot_loop()
 
-    async def _loop(self):
-        while True:
-            try:
-                raw = self._adc.read()
-                self._buf.append(raw)
-                if len(self._buf) > 4:
-                    self._buf.pop(0)
-                avg = sum(self._buf) // len(self._buf)
-                val = (avg * 127) // 4095
-                if val != self._last:
-                    self._last = val
-                    send_cc(self.channel, self.cc, val)
-            except Exception:
-                pass
-            await asyncio.sleep_ms(MIDI_POLL_MS)
+    def _poll(self):
+        raw = self._adc.read()
+        buf = self._buf
+        buf.append(raw)
+        self._acc += raw
+        if len(buf) > 4:
+            self._acc -= buf.pop(0)
+        avg = self._acc // len(buf)
+        val = (avg * 127) // 4095
+        if val != self._last:
+            self._last = val
+            send_cc(self.channel, self.cc, val)
 
     def stop(self):
-        t = self._task
-        if t:
-            try:
-                t.cancel()
-            except Exception:
-                pass
+        try:
+            _pots.remove(self)
+        except ValueError:
+            pass
 
 
 # ======================================================================

@@ -14,6 +14,10 @@ CLASSIC_FILE = 'app.py'
 WEB_FILE = 'app_web.py'
 CLASS_ATTR = 'AppScreen'
 
+# Кеши в RAM: обход флеш-каталогов дорогой, состав приложений меняется редко.
+_scan_cache = None
+_classic_cache = None
+
 
 def _valid_name(name):
     if not name:
@@ -93,8 +97,15 @@ def _web_dual(name, app_dir):
         return False
 
 
-def scan():
-    """Список приложений: name, title, classic, web, dir, url."""
+def scan(force=False):
+    """Список приложений: name, title, classic, web, dir, url.
+
+    Результат кешируется в RAM: обход папок и импорт app_web.py ради TITLE
+    стоят сотни миллисекунд на флешке. Сбрасывается через invalidate().
+    """
+    global _scan_cache
+    if _scan_cache is not None and not force:
+        return _scan_cache
     out = []
     for name, app_dir, _base in _app_dirs():
         classic = _exists('{}/{}'.format(app_dir, CLASSIC_FILE))
@@ -110,16 +121,28 @@ def scan():
             'dir': app_dir,
             'url': '/apps/{}/'.format(name) if web else '',
         })
+    _scan_cache = out
     return out
 
 
-def classic_apps():
+def classic_apps(force=False):
     """Только приложения с классической версией (для меню на плате)."""
+    global _classic_cache
+    if _classic_cache is not None and not force:
+        return _classic_cache
     out = []
     for name, app_dir, _base in _app_dirs():
         if _exists('{}/{}'.format(app_dir, CLASSIC_FILE)):
             out.append((name, app_dir.replace('/', '.') + '.app'))
+    _classic_cache = out
     return out
+
+
+def invalidate():
+    """Сбросить кеши реестра (после изменения состава приложений)."""
+    global _scan_cache, _classic_cache
+    _scan_cache = None
+    _classic_cache = None
 
 
 def find(name):

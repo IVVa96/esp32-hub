@@ -10,6 +10,7 @@
 # ======================================================================
 import os
 import json
+import time
 
 from apps.user.midi.config import (
     MIDI_PRESETS_DIR, MIDI_DEFAULT_PRESET, MIDI_DEFAULT_CHANNEL,
@@ -21,6 +22,28 @@ _TEMP_NAME = '_temp'
 _temp_cache = None
 _temp_base = None
 _temp_controls = None
+
+# Список пресетов держим в RAM: os.listdir на этой флешке стоит ~130 мс,
+# а state() спрашивает его на каждый запрос. Сбрасываем при любом изменении.
+_saves_cache = None
+
+# Разобранные JSON пресетов: чтение с флеша + json.loads стоят десятки мс,
+# а один и тот же пресет читается по нескольку раз за открытие экрана.
+_read_cache = {}
+
+# _temp пишется на флеш не чаще, чем раз в _TEMP_FLUSH_MS: запись держит
+# флеш ~100 мс и подвешивает и веб-пульт, и классический экран. Актуальная
+# копия всегда лежит в RAM (_temp_cache), на флеш уходит по таймеру и
+# принудительно (flush_temp) при выходе, смене пресета и выключении.
+_TEMP_FLUSH_MS = 2500
+_temp_flush_t = 0
+
+# Последнее записанное имя пресета: save_temp зовётся на каждое движение
+# фейдера, а _last при этом не меняется — второй файл не переписываем.
+_last_written = None
+
+# Каталог пресетов проверен (os.stat по флешу ~70 мс, см. _ensure_dir).
+_dir_ok = False
 
 _VALID_TYPES = ('—', 'Btn/Sw', 'Toggle Btn', 'Pot', 'Encoder')
 
@@ -41,8 +64,15 @@ def _path(name):
 
 
 def _ensure_dir():
+    # os.stat на каталоге во флеше стоит ~70 мс (медленные метаданные
+    # littlefs), а save_temp зовётся на каждое движение фейдера — поэтому
+    # результат проверки кэшируем в RAM.
+    global _dir_ok
+    if _dir_ok:
+        return True
     try:
         os.stat(MIDI_PRESETS_DIR)
+        _dir_ok = True
         return True
     except OSError:
         pass
@@ -61,6 +91,7 @@ def _ensure_dir():
             return False
     try:
         os.stat(MIDI_PRESETS_DIR)
+        _dir_ok = True
         return True
     except OSError:
         return False
@@ -74,7 +105,10 @@ def exists(name):
         return False
 
 
-def list_saves():
+def list_saves(force=False):
+    global _saves_cache
+    if _saves_cache is not None and not force:
+        return list(_saves_cache)
     if not _ensure_dir():
         return []
     out = []
@@ -84,7 +118,14 @@ def list_saves():
                 out.append(name[:-5])
     except Exception:
         pass
-    return sorted(out)
+    _saves_cache = sorted(out)
+    return list(_saves_cache)
+
+
+def invalidate_saves():
+    """Сбросить кеш списка пресетов (после записи/удаления/переименования)."""
+    global _saves_cache
+    _saves_cache = None
 
 
 def _build_pins(cfg):
@@ -157,12 +198,8 @@ def _parse_pins(data):
 def load(name):
     if name == MIDI_DEFAULT_PRESET:
         return None
-    if not _ensure_dir():
-        return None
-    try:
-        with open(_path(name), 'r') as f:
-            data = json.load(f)
-    except Exception:
+    data = _read(name)
+    if not isinstance(data, dict):
         return None
     return _parse_pins(data)
 
@@ -216,14 +253,28 @@ def _clean_controls(items):
     return out
 
 
+def _invalidate_read(name=None):
+    if name is None:
+        _read_cache.clear()
+    else:
+        try:
+            del _read_cache[name]
+        except KeyError:
+            pass
+
+
 def _read(name):
+    if name in _read_cache:
+        return _read_cache[name]
     if not _ensure_dir():
         return None
     try:
         with open(_path(name), 'r') as f:
-            return json.load(f)
+            data = json.load(f)
     except Exception:
         return None
+    _read_cache[name] = data
+    return data
 
 
 def load_controls(name):
@@ -255,6 +306,8 @@ def save(name, cfg, controls=None):
     try:
         with open(_path(name), 'w') as f:
             json.dump(payload, f)
+        _read_cache[name] = payload
+        invalidate_saves()
         return True
     except Exception as e:
         error("save.save:", e)
@@ -268,6 +321,8 @@ def delete(name):
         return False
     try:
         os.remove(_path(name))
+        _invalidate_read(name)
+        invalidate_saves()
         return True
     except Exception:
         return False
@@ -292,6 +347,9 @@ def rename(old_name, new_name):
         os.remove(_path(old_name))
     except Exception:
         pass
+    _invalidate_read(old_name)
+    _invalidate_read(new_name)
+    invalidate_saves()
     base, tpins = load_temp()
     if base == old_name:
         try:
@@ -303,9 +361,16 @@ def rename(old_name, new_name):
 
 def save_last(name):
     """Remember which preset should be restored on the next start."""
+    global _last_written
+    name = name or MIDI_DEFAULT_PRESET
+    if name == _last_written:
+        return True
+    raw = json.dumps({'preset': name})
     try:
         with open(_path('_last'), 'w') as f:
-            f.write(json.dumps({'preset': name or MIDI_DEFAULT_PRESET}))
+            f.write(raw)
+        _last_written = name
+        _read_cache['_last'] = {'preset': name}
         return True
     except Exception as e:
         error("save_last:", e)
@@ -313,17 +378,29 @@ def save_last(name):
 
 
 def load_last():
-    try:
-        with open(_path('_last'), 'r') as f:
-            data = json.loads(f.read())
-    except Exception:
-        return None
+    data = _read('_last')
     if not isinstance(data, dict):
         return None
     name = data.get('preset')
     if isinstance(name, str) and name:
         return name
     return None
+
+
+def flush_temp():
+    """Сбросить отложенный _temp на флеш немедленно."""
+    global _temp_flush_t
+    raw = _temp_cache
+    if raw is None:
+        return True
+    try:
+        with open(_path(_TEMP_NAME), 'w') as f:
+            f.write(raw)
+        _temp_flush_t = time.ticks_ms()
+        return True
+    except Exception as e:
+        error("save_temp write:", e)
+        return False
 
 
 def save_temp(cfg, base, controls=None):
@@ -341,7 +418,6 @@ def save_temp(cfg, base, controls=None):
     payload = {'base': base, 'pins': pins, 'controls': controls}
     _temp_base = base
     _temp_controls = controls
-    save_last(base)
     try:
         new_json = json.dumps(payload)
     except Exception as e:
@@ -349,14 +425,13 @@ def save_temp(cfg, base, controls=None):
         return False
     if _temp_cache == new_json:
         return True
-    try:
-        with open(_path(_TEMP_NAME), 'w') as f:
-            f.write(new_json)
-        _temp_cache = new_json
+    _temp_cache = new_json
+    save_last(base)
+    now = time.ticks_ms()
+    if _temp_flush_t and time.ticks_diff(now, _temp_flush_t) < _TEMP_FLUSH_MS:
+        # Свежая копия уже в RAM; на флеш уйдёт по таймеру или flush_temp().
         return True
-    except Exception as e:
-        error("save_temp write:", e)
-        return False
+    return flush_temp()
 
 
 def load_temp():

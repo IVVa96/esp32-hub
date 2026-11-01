@@ -92,6 +92,12 @@ async def run():
         power.capture_current()
     except Exception as e:
         error("power capture:", e)
+    # Отложенная запись временного пресета MIDI: перед deep sleep сбрасываем.
+    try:
+        from apps.user.midi.utils import save as midi_save
+        midi_save.flush_temp()
+    except Exception:
+        pass
     _disable_wifi()
     _disable_backlight()
     power.configure_wake()

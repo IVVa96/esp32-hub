@@ -4,6 +4,7 @@
 import asyncio
 import os
 import json
+import socket
 import time
 import gc
 
@@ -27,6 +28,9 @@ _PAGES = {}
 _server = None
 _KEEP = False
 _SESSIONS = set()
+# Живые клиентские соединения: при stop() их надо закрыть, иначе вкладка с
+# keep-alive продолжает работать с "остановленным" сервером.
+_CONNS = set()
 _FS_CACHE = {'path': None, 'free': 0, 'total': 0, 't': 0}
 _COOKIE = 'esp_sid'
 
@@ -129,6 +133,30 @@ def _login_page():
                 '<h1>Login page not found</h1><pre>{}</pre>'.format(e))
 
 
+async def _warm_cache():
+    """Прочитать страницы в RAM заранее.
+
+    Флеш отдаёт ~0.5 МБ/с, поэтому страница в 60 КБ грузится ~120 мс.
+    Держим их в куче PSRAM, пока поднят сервер, и отдаём без чтения флеша.
+    Между файлами отдаём управление, чтобы сервер не подвисал.
+    """
+    pages = [_PORTAL_PATH, _LOGIN_PATH, _HTML_PATH, _USB_HELP_PATH]
+    try:
+        for a in app_registry.scan():
+            if a.get('web'):
+                page = app_registry.web_page(a['name'])
+                if page and page not in pages:
+                    pages.append(page)
+    except Exception as e:
+        error('warm scan:', e)
+    for page in pages:
+        try:
+            _read_page(page)
+        except Exception:
+            pass
+        await asyncio.sleep_ms(1)
+
+
 def _new_session():
     """Создать случайный идентификатор сессии для cookie."""
     try:
@@ -160,6 +188,7 @@ def _authed(headers):
 
 
 async def _read_body(reader, headers):
+    pre = headers.pop('_pre', b'')
     try:
         length = int(headers.get('content-length', '0'))
     except Exception:
@@ -170,6 +199,9 @@ async def _read_body(reader, headers):
         length = 512
     chunks = []
     left = length
+    if pre:
+        chunks.append(pre[:length])
+        left -= len(pre[:length])
     while left > 0:
         chunk = await reader.read(left)
         if not chunk:
@@ -177,6 +209,24 @@ async def _read_body(reader, headers):
         chunks.append(chunk)
         left -= len(chunk)
     return b''.join(chunks)
+
+
+async def _copy_body(f, reader, headers, length):
+    """Пишем тело запроса в файл; учитываем байты, прочитанные вместе с head."""
+    pre = headers.pop('_pre', b'')
+    left = length
+    while pre and left > 0:
+        chunk = pre[:left]
+        pre = pre[len(chunk):]
+        f.write(chunk)
+        left -= len(chunk)
+    while left > 0:
+        chunk = await reader.read(min(4096, left))
+        if not chunk:
+            break
+        f.write(chunk)
+        left -= len(chunk)
+    return left
 
 
 def _fmt_size(n):
@@ -318,19 +368,31 @@ async def _err(writer, code, msg):
 # ----------------------------------------------------------------------
 async def _handle(reader, writer):
     try:
+        # Nagle держит второй сегмент до ACK клиента: ответы больше MTU
+        # (state, страницы) ждут десятки-сотни мс. Выключаем для отклика.
+        try:
+            sock = getattr(writer, 's', None)
+            if sock is None:
+                sock = writer.get_extra_info('socket')
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except Exception:
+            pass
+        _CONNS.add(writer)
         if not STATUS.get('running'):
             # Сервер остановлен - вежливо закрываем
             await _send(writer, 503, '{"ok":false,"error":"stopped"}')
             return
 
+        rest = b''
         while True:
-            try:
-                line = await asyncio.wait_for(reader.readline(), 8)
-            except Exception:
+            if not STATUS.get('running'):
+                # Сервер остановили, пока жило keep-alive соединение.
+                await _send(writer, 503, '{"ok":false,"error":"stopped"}')
                 return
-            if not line:
+            head, rest = await _read_head(reader, rest)
+            if head is None:
                 return
-            if not await _one(reader, writer, line):
+            if not await _one(reader, writer, head, rest):
                 return
     except Exception as e:
         try:
@@ -338,6 +400,7 @@ async def _handle(reader, writer):
         except Exception:
             pass
     finally:
+        _CONNS.discard(writer)
         try:
             writer.close()
             await writer.wait_closed()
@@ -345,15 +408,43 @@ async def _handle(reader, writer):
             pass
 
 
-async def _one(reader, writer, line):
+async def _read_head(reader, rest):
+    """Читаем заголовки запроса одним куском, без readline на каждую строку.
+
+    Каждый await reader.readline() стоит на ESP32 несколько миллисекунд,
+    поэтому копим байты до пустой строки и разбираем уже в памяти.
+    Возвращает (head, остаток) или (None, b''), если соединение закрыто.
+    """
+    buf = rest or b''
+    while True:
+        idx = buf.find(b'\r\n\r\n')
+        skip = 4
+        if idx < 0:
+            idx = buf.find(b'\n\n')
+            skip = 2
+        if idx >= 0:
+            return buf[:idx], buf[idx + skip:]
+        if len(buf) > 2048:
+            return None, b''
+        try:
+            chunk = await reader.read(512)
+        except Exception:
+            return None, b''
+        if not chunk:
+            return None, b''
+        buf += chunk
+
+
+async def _one(reader, writer, raw_head, rest=b''):
     """Handle one request; True when the socket may be reused."""
     global _KEEP
     _KEEP = False
     try:
+        rows = raw_head.replace(b'\r\n', b'\n').split(b'\n')
         try:
-            text = line.decode().strip()
+            text = rows[0].decode().strip()
         except Exception:
-            text = str(line)
+            text = str(rows[0])
         parts = text.split()
         if len(parts) < 3:
             await _err(writer, 400, 'bad request')
@@ -367,20 +458,24 @@ async def _one(reader, writer, line):
         query = parse_query(qs)
 
         headers = {}
-        while True:
-            h = await reader.readline()
-            if not h or h == b'\r\n' or h == b'\n':
-                break
+        for raw in rows[1:]:
             try:
-                hs = h.decode().strip()
+                hs = raw.decode().strip()
             except Exception:
+                continue
+            if not hs:
                 continue
             if ':' in hs:
                 k, v = hs.split(':', 1)
                 headers[k.strip().lower()] = v.strip()
+        if rest:
+            # Тело (или начало следующего запроса) прочитано вместе с head.
+            headers['_pre'] = rest
 
-        _KEEP = (method == 'GET' and _ver == 'HTTP/1.1' and
-                 headers.get('connection', '').lower() != 'close')
+        _KEEP = (_ver == 'HTTP/1.1' and
+                 headers.get('connection', '').lower() != 'close' and
+                 (method == 'GET' or
+                  headers.get('content-length', '0') in ('', '0')))
         await _route(method, path, query, headers, reader, writer)
     except Exception as e:
         _KEEP = False
@@ -477,8 +572,7 @@ async def _route(method, path, query, headers, reader, writer):
 
     if method == 'GET' and (path == '/usb' or path == '/usb/'):
         try:
-            with open(_USB_HELP_PATH, 'r') as f:
-                page = f.read()
+            page = _read_page(_USB_HELP_PATH)
         except Exception as e:
             await _send(writer, 500,
                         '<!doctype html><meta charset="utf-8">'
@@ -623,14 +717,8 @@ async def _route(method, path, query, headers, reader, writer):
             pass
         tmp = p + '.part'
         try:
-            left = length
             with open(tmp, 'wb') as f:
-                while left > 0:
-                    chunk = await reader.read(min(4096, left))
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    left -= len(chunk)
+                left = await _copy_body(f, reader, headers, length)
             if left > 0:
                 try:
                     os.remove(tmp)
@@ -750,14 +838,8 @@ async def _route(method, path, query, headers, reader, writer):
         dst = p.rstrip('/') + '/' + name
         tmp = dst + '.part'
         try:
-            left = length
             with open(tmp, 'wb') as f:
-                while left > 0:
-                    chunk = await reader.read(min(4096, left))
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    left -= len(chunk)
+                left = await _copy_body(f, reader, headers, length)
             if left > 0:
                 try:
                     os.remove(tmp)
@@ -847,6 +929,17 @@ async def _route(method, path, query, headers, reader, writer):
             return
         action = query.get('action', 'state')
         try:
+            # Быстрый путь для непрерывных контролов (фейдеры): пока идёт
+            # перетаскивание, страница шлёт только id+value. Ни set_cols,
+            # ни полный JSON, ни gc - всё это заметно на ESP32.
+            if action == 'sendctl' and query.get('lite') == '1':
+                if query.get('cols'):
+                    midi_engine.set_cols(query.get('cols'))
+                midi_engine.send_control(
+                    query.get('id'), query.get('value'),
+                    query.get('persist', '1') == '1', True)
+                await _send(writer, 200, b'1', 'text/plain; charset=utf-8')
+                return
             if query.get('cols'):
                 midi_engine.set_cols(query.get('cols'))
             if action == 'state':
@@ -1047,6 +1140,7 @@ def start(mode='sta', ssid='', ip=''):
     try:
         asyncio.create_task(_serve())
         asyncio.create_task(_wifi_watchdog())
+        asyncio.create_task(_warm_cache())
     except Exception as e:
         STATUS['running'] = False
         STATUS['error'] = 'task: {}'.format(e)
@@ -1059,11 +1153,37 @@ def stop():
     web_mode.exit()
     STATUS['running'] = False
     _SESSIONS.clear()
+    # Рвём живые keep-alive соединения: иначе браузер продолжает получать
+    # страницы и /api от уже остановленного сервера.
+    for w in list(_CONNS):
+        try:
+            w.close()
+        except Exception:
+            pass
+    _CONNS.clear()
     power.remember_web(STATUS.get('mode'), STATUS.get('ssid'),
                        STATUS.get('ip'), False)
     try:
         if _server is not None:
             _server.close()
+    except Exception:
+        pass
+    # Освобождаем RAM: страницы и кеш реестра приложений живут только
+    # пока поднят веб-сервер, иначе они занимают память других приложений.
+    _release_ram()
+
+
+def _release_ram():
+    global _HTML
+    _PAGES.clear()
+    _HTML = None
+    try:
+        app_registry.invalidate()
+    except Exception:
+        pass
+    try:
+        import gc
+        gc.collect()
     except Exception:
         pass
 

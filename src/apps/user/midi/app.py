@@ -1608,6 +1608,7 @@ class MidiScreen(Screen):
             try:
                 base = MidiScreen._current_preset or MIDI_DEFAULT_PRESET
                 midi_save.save_temp(MidiScreen._cfg, base)
+                midi_save.flush_temp()
             except Exception:
                 pass
         self._alive = False

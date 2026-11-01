@@ -106,7 +106,7 @@
   .fader-card{display:flex;flex-direction:column;align-items:center;
     justify-content:space-between;gap:3px}
   .pad-card{display:flex;flex-direction:column;gap:3px}
-  .fader{position:relative;width:calc(var(--cell) * 0.34);max-width:84px;
+  .fader{position:relative;width:100%;max-width:112px;
     height:calc(var(--cell) * 1.2);margin:0;
     touch-action:none;cursor:pointer;-webkit-user-select:none;
     user-select:none}
@@ -277,6 +277,14 @@ function post(q) { return api(q, "POST"); }
 
 function apply(d) {
   S = d;
+  // A state snapshot can be built before the board has applied the latest
+  // fader value; keep recent local values so the fader does not snap back.
+  var list = d.controls || [];
+  var now = Date.now();
+  for (var li = 0; li < list.length; li++) {
+    var lv = _localVal[String(list[li].id)];
+    if (lv && now - lv.t < 3000) list[li].value = lv.v;
+  }
   $("dot").className = "dot on";
   $("modeInfo").textContent = d.mode === "ble" ? "BLE MIDI" : "USB MIDI";
   $("usbBtn").className = d.mode === "ble" ? "tiny" : "tiny on";
@@ -322,7 +330,27 @@ function rawPost(q) {
     .catch(function () { return null; });
 }
 
+// Continuous controls (faders) use their own queue and a plain GET with a
+// one-byte reply: no full state, no extra query, nothing to parse.
+var _fastTail = Promise.resolve();
+
+function _fast(q) {
+  function run() {
+    return fetch("/api/midi?" + q, { method: "GET", cache: "no-store" })
+      .then(function (r) {
+        if (!r.ok) throw new Error("http " + r.status);
+        return r.text();
+      });
+  }
+  var p = _fastTail.then(run, run);
+  _fastTail = p.then(function () {}, function () {});
+  return p;
+}
+
 var drag = null;
+// Recent locally set fader values: id -> {v, t}. Guards against repainting
+// from a state snapshot that predates the value we just sent.
+var _localVal = {};
 
 function faderValue(track, ev) {
   var r = track.getBoundingClientRect();
@@ -332,18 +360,33 @@ function faderValue(track, ev) {
 
 function faderPaint(el, v) {
   el._v = v;
+  // Keep the local model in sync: a later full repaint must not snap the
+  // fader back to an old (often zero) value from a stale state snapshot.
+  var cid = el.getAttribute("data-cid");
+  var c = cid ? ctlById(cid) : null;
+  if (c) c.value = v;
+  if (cid && drag && drag.el === el) {
+    _localVal[String(cid)] = { v: v, t: Date.now() };
+  }
   var track = el.querySelector(".fader-track");
   var th = track.clientHeight || 140;
   var y = Math.round(v / 127 * (th - 12));
-  el.querySelector(".fader-fill").style.height = (y + 6) + "px";
-  el.querySelector(".fader-cap").style.bottom = y + "px";
+  // clientHeight is rounded down, so at the top value the cap could stop a
+  // fraction of a pixel short of the track edge (a visible 1px sliver).
+  // Use a percentage-based offset for the extremes: it follows the real
+  // padding-box size exactly.
+  var top = v >= 127;
+  el.querySelector(".fader-fill").style.height = top ? "100%" : (y + 6) + "px";
+  el.querySelector(".fader-cap").style.bottom =
+    top ? "calc(100% - 12px)" : y + "px";
   var vv = el.querySelector(".fader-val");
   if (vv) vv.textContent = Math.round(v / 127 * 100);
 }
 
 function bindFader(el, c) {
   var track = el.querySelector(".fader-track");
-  var hit = track;
+  // The whole wide fader box is the touch target, not just the 14px track.
+  var hit = el.querySelector(".fader") || track;
   var cid = el.getAttribute("data-cid");
   faderPaint(el, c.value);
 
@@ -357,8 +400,8 @@ function bindFader(el, c) {
     var job = pending;
     pending = null;
     inflight = true;
-    rawPost("action=sendctl&id=" + cid + "&value=" + job.v +
-            "&persist=" + (job.p ? "1" : "0") + "&lite=1")
+    _fast("action=sendctl&id=" + cid + "&value=" + job.v +
+          "&persist=" + (job.p ? "1" : "0") + "&lite=1")
       .then(flushSend, flushSend);
   }
   function send(v, persist) {
@@ -366,28 +409,40 @@ function bindFader(el, c) {
     if (!inflight) flushSend();
   }
 
+  // Relative drag: the cap follows the finger movement instead of jumping to
+  // the touch point, so grabbing the cap itself never changes the value.
+  function dragValue(ev) {
+    // clientY == 0 means the browser did not report a position (can happen on
+    // some touch/pen releases) - keep the current value instead of slamming
+    // the fader to an extreme.
+    if (!ev || ev.clientY <= 0) return el._v;
+    var h = drag.h || 1;
+    var v = drag.v0 + Math.round((drag.y0 - ev.clientY) / h * 127);
+    return v < 0 ? 0 : (v > 127 ? 127 : v);
+  }
+
   hit.addEventListener("pointerdown", function (ev) {
     ev.preventDefault();
     ev.stopPropagation();
     try { hit.setPointerCapture(ev.pointerId); } catch (e) {}
-    drag = { el: el, last: Date.now() };
-    faderPaint(el, faderValue(track, ev));
-    send(el._v, false);
+    drag = {
+      el: el,
+      y0: ev.clientY,
+      v0: el._v,
+      h: track.clientHeight || 140
+    };
   });
   hit.addEventListener("pointermove", function (ev) {
     if (!drag || drag.el !== el) return;
-    var v = faderValue(track, ev);
+    var v = dragValue(ev);
     if (v === el._v) return;
     faderPaint(el, v);
-    var t = Date.now();
-    if (t - drag.last > 110) {
-      drag.last = t;
-      send(v, false);
-    }
+    // No throttle: send every change, the in-flight gate below coalesces.
+    send(v, false);
   });
   function end(ev) {
     if (!drag || drag.el !== el) return;
-    faderPaint(el, faderValue(track, ev));
+    faderPaint(el, dragValue(ev));
     send(el._v, true);
     drag = null;
   }
@@ -536,7 +591,7 @@ function armDwell() {
 $("surfaceWrap").addEventListener("pointerdown", function (e) {
   var card = e.target.closest ? e.target.closest(".ctl") : null;
   if (!card || !card.getAttribute("data-cid")) return;
-  if (e.target.closest(".fader-track") ||
+  if (e.target.closest(".fader") ||
       e.target.closest("[data-k=trigger]")) return;
   var r = card.getBoundingClientRect();
   moveDrag = {
@@ -615,7 +670,10 @@ function endMove(e) {
   clearTimeout(d.timer);
   d.card.classList.remove("dragging");
   if (d.ph && d.ph.parentNode) d.ph.parentNode.removeChild(d.ph);
-  if (!d.active || d.slot === null || d.slot === d.startSlot) {
+  if (!d.active || d.slot === null) {
+    return;
+  }
+  if (d.slot === d.startSlot) {
     apply(S);
     return;
   }

@@ -73,7 +73,7 @@ def _ensure_loaded():
         _controls = midi_save.load_controls(
             MidiScreen._current_preset or MIDI_DEFAULT_PRESET)
         _renumber()
-    _layout()
+        _layout()
 
 
 def start():
@@ -111,6 +111,12 @@ def stop():
     _started = False
     try:
         MidiScreen._stop_all(_host)
+    except Exception:
+        pass
+    # Дописать отложенный _temp: выход из веб-режима не должен терять
+    # последние изменения пресета.
+    try:
+        midi_save.flush_temp()
     except Exception:
         pass
 
