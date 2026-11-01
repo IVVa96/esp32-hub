@@ -81,29 +81,34 @@
     flex:0 0 auto}
   .row input[type=range]{flex:1 1 auto;width:100%;padding:0;border:0;
     background:transparent;accent-color:var(--accent)}
-  .padbtn{width:100%;margin-top:8px;border:1px solid var(--line2);
-    background:#000;color:var(--text);padding:14px 8px 12px;font-size:8px}
+  .padbtn{width:100%;margin-top:0;border:1px solid var(--line2);
+    background:#000;color:var(--muted);padding:4px 2px;font-size:8px;
+    flex:1 1 auto;min-height:0}
   .padbtn:hover{border-color:var(--accent);color:var(--accent)}
   .padbtn.on{border-color:var(--ok);color:var(--ok)}
   .padbtn.flash{border-color:var(--ok);color:var(--ok);background:#0e2a17}
   #ctlPane[hidden],.surface[hidden]{display:none}
   .sub{margin-top:0}
-  .surface{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;
-    margin-top:10px}
-  .ctl{border:1px solid var(--line);background:var(--panel2);padding:8px;
-    box-shadow:inset 0 0 0 1px #000}
-  .ctl-tags{display:flex;gap:5px;align-items:center;font-size:6px;
-    color:var(--dim);width:100%}
+  .surface{display:grid;grid-template-columns:repeat(4,116px);
+    grid-auto-rows:116px;gap:6px;margin-top:10px;touch-action:none;
+    -webkit-user-select:none;user-select:none;
+    justify-content:start}
+  .ctl{border:1px solid var(--line);background:var(--panel2);padding:5px;
+    box-shadow:inset 0 0 0 1px #000;min-width:0;overflow:hidden}
+  .ctl.dragging{opacity:.75;border-color:var(--accent)}
+  .ph{border:1px dashed var(--accent);background:rgba(255,140,26,.08);
+    pointer-events:none}
+  .ctl-tags{display:flex;gap:4px;align-items:center;font-size:6px;
+    color:var(--dim);width:100%;justify-content:center}
   .ctl-tags .tid{color:var(--accent);border:1px solid var(--line2);
     padding:2px 4px 1px}
-  .fader-card{width:116px;display:flex;flex-direction:column;
-    align-items:center;gap:6px}
-  .pad-card{width:116px;display:flex;flex-direction:column;gap:6px}
-  .pad-card .padbtn{margin-top:2px;padding:26px 8px 24px}
-  .fader{position:relative;width:40px;height:152px;margin:2px 0;
+  .fader-card{display:flex;flex-direction:column;align-items:center;
+    justify-content:space-between;gap:3px}
+  .pad-card{display:flex;flex-direction:column;gap:3px}
+  .fader{position:relative;width:40px;height:150px;margin:0;
     touch-action:none;cursor:pointer;-webkit-user-select:none;
     user-select:none}
-  .fader-track{position:absolute;left:13px;top:1px;width:14px;height:150px;
+  .fader-track{position:absolute;left:13px;top:1px;width:14px;height:148px;
     border:2px solid var(--line2);border-radius:0;background:#000;
     overflow:hidden}
   .fader-fill{position:absolute;left:0;bottom:0;width:100%;
@@ -113,9 +118,9 @@
     box-shadow:inset 0 0 0 2px #000;pointer-events:none}
   .fader-cap:after{content:"";position:absolute;left:0;right:0;top:5px;
     height:2px;background:#000}
-  .fader-val{font-size:8px;color:var(--accent)}
-  .ctl-name{font-size:6px;color:var(--muted);text-align:center;
-    line-height:1.6;word-break:break-word}
+  .fader-val{font-size:8px;color:var(--accent);line-height:1}
+  .ctl-name{font-size:6px;color:var(--text);text-align:center;
+    line-height:1.4;word-break:break-word}
   .pin{border:1px solid var(--line);background:var(--panel2);padding:10px;
     box-shadow:inset 0 0 0 1px #000}
   .pin.active{border-color:var(--accent)}
@@ -284,7 +289,7 @@ function faderValue(track, ev) {
 function faderPaint(el, v) {
   el._v = v;
   el.querySelector(".fader-fill").style.height = (v / 127 * 100) + "%";
-  el.querySelector(".fader-cap").style.bottom = (v / 127 * 140) + "px";
+  el.querySelector(".fader-cap").style.bottom = (v / 127 * 138) + "px";
   el.querySelector(".fader-val").textContent = v;
 }
 
@@ -341,26 +346,173 @@ function drawSurface(d) {
     var c = list[i];
     var el = document.createElement("div");
     el.setAttribute("data-cid", c.id);
+    var slot = c.slot || 0;
+    el.style.gridColumn = String((slot % 4) + 1);
+    el.style.gridRow = String(Math.floor(slot / 4) + 1);
+    if (c.kind === "fader") el.style.gridRowEnd = "span 2";
     if (c.kind === "fader") {
       el.className = "ctl fader-card";
-      el.innerHTML = ctlTags(c) +
+      el.innerHTML = '<div class="ctl-name">' + esc(c.label) + "</div>" +
         '<div class="fader"><div class="fader-track">' +
         '<div class="fader-fill"></div></div>' +
         '<div class="fader-cap"></div></div>' +
-        '<div class="fader-val">' + c.value + "</div>" +
-        '<div class="ctl-name">' + esc(c.label) + "</div>";
+        '<div class="fader-val">' + c.value + "</div>" + ctlTags(c);
       bindFader(el, c);
     } else {
       el.className = "ctl pad-card";
       var on = c.kind === "switch" && c.value;
-      el.innerHTML = ctlTags(c) +
+      el.innerHTML = '<div class="ctl-name">' + esc(c.label) + "</div>" +
         '<button class="padbtn' + (on ? " on" : "") + '" data-k="trigger">' +
         (c.kind === "switch" ? (c.value ? "ON" : "OFF") : "SEND") + "</button>" +
-        '<div class="ctl-name">' + esc(c.label) + "</div>";
+        ctlTags(c);
     }
     wrap.appendChild(el);
   }
 }
+
+function slotFromPoint(x, y) {
+  var wrap = $("surfaceWrap");
+  var r = wrap.getBoundingClientRect();
+  var gap = 6;
+  var pitch = 116 + gap;
+  var pitchY = 116 + gap;
+  var col = Math.round((x - r.left) / pitch);
+  var row = Math.round((y - r.top) / pitchY);
+  col = col < 0 ? 0 : (col > 3 ? 3 : col);
+  row = row < 0 ? 0 : row;
+  return row * 4 + col;
+}
+
+function gridPlace(el, slot, span) {
+  el.style.gridColumn = String((slot % 4) + 1);
+  el.style.gridRow = String(Math.floor(slot / 4) + 1);
+  el.style.gridRowEnd = span > 1 ? "span 2" : "auto";
+}
+
+// Recompute the whole surface locally: dragged card first at the drop cell,
+// everybody else shifts right/down into the nearest free cell.
+function previewLayout(id, slot) {
+  if (!S || !S.controls) return;
+  var list = S.controls, drag = null, i;
+  for (i = 0; i < list.length; i++) {
+    if (String(list[i].id) === String(id)) drag = list[i];
+  }
+  if (!drag) return;
+  var rest = [];
+  for (i = 0; i < list.length; i++) if (list[i] !== drag) rest.push(list[i]);
+  rest.sort(function (a, b) { return (a.slot - b.slot) || (a.id - b.id); });
+  var order = [drag].concat(rest);
+  var used = {}, at = {};
+  for (i = 0; i < order.length; i++) {
+    var c = order[i];
+    var span = c.kind === "fader" ? 2 : 1;
+    var s = i === 0 ? slot : c.slot;
+    if (s < 0) s = 0;
+    while (true) {
+      var ok = !used[s] && (span === 1 || !used[s + 4]);
+      if (ok) break;
+      s++;
+    }
+    used[s] = 1;
+    if (span === 2) used[s + 4] = 1;
+    at[c.id] = s;
+    var el = $("surfaceWrap").querySelector('[data-cid="' + c.id + '"]');
+    if (el) gridPlace(el, s, span);
+  }
+  return at[drag.id];
+}
+
+var moveDrag = null;
+var DWELL_MS = 650;
+
+function placePh(ph, slot, span) {
+  ph.style.gridColumn = String((slot % 4) + 1);
+  ph.style.gridRow = String(Math.floor(slot / 4) + 1);
+  ph.style.gridRowEnd = span > 1 ? "span 2" : "auto";
+}
+
+function clearDwell() {
+  if (moveDrag && moveDrag.timer) {
+    clearTimeout(moveDrag.timer);
+    moveDrag.timer = null;
+  }
+}
+
+function armDwell() {
+  clearDwell();
+  if (!moveDrag || moveDrag.pushed) return;
+  moveDrag.timer = setTimeout(function () {
+    if (!moveDrag || moveDrag.pushed) return;
+    moveDrag.pushed = true;
+    if (moveDrag.ph) moveDrag.ph.style.display = "none";
+    previewLayout(moveDrag.id, moveDrag.slot);
+  }, DWELL_MS);
+}
+
+$("surfaceWrap").addEventListener("pointerdown", function (e) {
+  var card = e.target.closest ? e.target.closest(".ctl") : null;
+  if (!card || !card.getAttribute("data-cid")) return;
+  if (e.target.closest(".fader") || e.target.closest("[data-k=trigger]")) return;
+  e.preventDefault();
+  var r = card.getBoundingClientRect();
+  moveDrag = {
+    card: card,
+    id: card.getAttribute("data-cid"),
+    x: e.clientX,
+    y: e.clientY,
+    offX: e.clientX - r.left,
+    offY: e.clientY - r.top,
+    moved: false,
+    pushed: false,
+    slot: null,
+    ph: null,
+    timer: null,
+    span: card.classList.contains("fader-card") ? 2 : 1,
+  };
+  try { card.setPointerCapture(e.pointerId); } catch (err) {}
+});
+
+$("surfaceWrap").addEventListener("pointermove", function (e) {
+  if (!moveDrag) return;
+  if (!moveDrag.moved) {
+    var dx = e.clientX - moveDrag.x;
+    var dy = e.clientY - moveDrag.y;
+    if (dx * dx + dy * dy < 64) return;
+    moveDrag.moved = true;
+    moveDrag.card.classList.add("dragging");
+    var ph = document.createElement("div");
+    ph.className = "ph";
+    $("surfaceWrap").appendChild(ph);
+    moveDrag.ph = ph;
+  }
+  var slot = slotFromPoint(e.clientX - moveDrag.offX,
+                           e.clientY - moveDrag.offY);
+  if (slot === moveDrag.slot) return;
+  moveDrag.slot = slot;
+  if (moveDrag.pushed) {
+    previewLayout(moveDrag.id, slot);
+    return;
+  }
+  placePh(moveDrag.ph, slot, moveDrag.span);
+  armDwell();
+});
+
+function endMove(e) {
+  if (!moveDrag) return;
+  var d = moveDrag;
+  moveDrag = null;
+  clearTimeout(d.timer);
+  d.card.classList.remove("dragging");
+  if (d.ph && d.ph.parentNode) d.ph.parentNode.removeChild(d.ph);
+  if (!d.moved || d.slot === null) { apply(S); return; }
+  var act = d.pushed ? "movectl" : "swapctl";
+  rawPost("action=" + act + "&id=" + d.id + "&slot=" + d.slot).then(function (r) {
+    if (r && r.ok) apply(r); else apply(S);
+  });
+}
+
+$("surfaceWrap").addEventListener("pointerup", endMove);
+$("surfaceWrap").addEventListener("pointercancel", endMove);
 
 function drawControls(d) {
   var g = $("ctlGrid");

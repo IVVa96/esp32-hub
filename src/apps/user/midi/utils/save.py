@@ -205,8 +205,14 @@ def _clean_controls(items):
         label = c.get('label')
         if not isinstance(label, str) or not label:
             label = 'CTRL {}'.format(i + 1)
+        try:
+            slot = int(c.get('slot', -1))
+        except Exception:
+            slot = -1
+        if slot < 0:
+            slot = -1
         out.append({'id': i + 1, 'kind': kind, 'label': label[:16],
-                    'cc': cc, 'ch': ch, 'value': val})
+                    'cc': cc, 'ch': ch, 'value': val, 'slot': slot})
     return out
 
 

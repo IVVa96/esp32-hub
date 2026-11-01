@@ -19,6 +19,7 @@ ACTIVE_TYPES = ('Btn/Sw', 'Toggle Btn', 'Pot', 'Encoder')
 # Web control surface: faders, buttons, switches, knobs -> CC messages.
 KINDS = ('fader', 'button', 'switch')
 MAX_CONTROLS = 16
+COLS = 4          # Surface grid columns (shared with the web page).
 
 _MAX_NAME = 24
 _MAX_LABEL = 16
@@ -57,6 +58,7 @@ def _ensure_loaded():
         _controls = midi_save.load_controls(
             MidiScreen._current_preset or MIDI_DEFAULT_PRESET)
         _renumber()
+    _layout()
 
 
 def start():
@@ -132,6 +134,7 @@ def _renumber():
         n = counters.get(k, 0) + 1
         counters[k] = n
         c['num'] = n
+    _layout()
 
 
 def _label_for(c):
@@ -152,8 +155,108 @@ def _control(cid):
 def _controls_state():
     return [{'id': c['id'], 'num': c.get('num', c['id']),
              'kind': c['kind'], 'label': c['label'],
-             'cc': c['cc'], 'ch': c['ch'], 'value': c['value']}
+             'cc': c['cc'], 'ch': c['ch'], 'value': c['value'],
+             'slot': c.get('slot', 0)}
             for c in (_controls or [])]
+
+
+# ---- surface layout --------------------------------------------------
+def _span(kind):
+    """Fader takes two grid rows, buttons and switches take one."""
+    return 2 if kind == 'fader' else 1
+
+
+def _cells(slot, kind):
+    out = [slot]
+    if _span(kind) == 2:
+        out.append(slot + COLS)
+    return out
+
+
+def _fits(slot, kind, used):
+    if slot < 0:
+        return False
+    for s in _cells(slot, kind):
+        if s in used:
+            return False
+    return True
+
+
+def _find_slot(start, kind, used):
+    slot = start if start > 0 else 0
+    while not _fits(slot, kind, used):
+        slot += 1
+        if slot > 1024:
+            break
+    return slot
+
+
+def _place(order):
+    used = set()
+    for c in order:
+        slot = _find_slot(c.get('slot', -1), c['kind'], used)
+        c['slot'] = slot
+        for s in _cells(slot, c['kind']):
+            used.add(s)
+    return used
+
+
+def _layout():
+    """Keep stored slots when free, otherwise pack into the first gap."""
+    order = sorted(_controls or [], key=lambda c: (c.get('slot', -1), c['id']))
+    return _place(order)
+
+
+def move_control(cid, slot):
+    _ensure_loaded()
+    c = _control(cid)
+    if c is None:
+        return {'ok': False, 'error': 'no such control'}
+    try:
+        slot = int(slot)
+    except Exception:
+        return {'ok': False, 'error': 'bad slot'}
+    if slot < 0:
+        return {'ok': False, 'error': 'bad slot'}
+    # Place the dragged control first, then let the rest shift right/down
+    # into the nearest free cell, so it always gets exactly the drop slot.
+    c['slot'] = slot
+    rest = [o for o in _controls if o is not c]
+    rest.sort(key=lambda o: (o.get('slot', -1), o['id']))
+    _place([c] + rest)
+    _save_temp()
+    return state()
+
+
+def swap_control(cid, slot):
+    """Drop onto an occupied cell: exchange positions with its owner."""
+    _ensure_loaded()
+    c = _control(cid)
+    if c is None:
+        return {'ok': False, 'error': 'no such control'}
+    try:
+        slot = int(slot)
+    except Exception:
+        return {'ok': False, 'error': 'bad slot'}
+    if slot < 0:
+        return {'ok': False, 'error': 'bad slot'}
+    other = None
+    for o in _controls:
+        if o is c:
+            continue
+        if slot in _cells(o.get('slot', 0), o['kind']):
+            other = o
+            break
+    if other is None:
+        return move_control(cid, slot)
+    mine = c['slot']
+    c['slot'] = other['slot']
+    other['slot'] = mine
+    rest = [o for o in _controls if o is not c and o is not other]
+    rest.sort(key=lambda o: (o.get('slot', -1), o['id']))
+    _place([c, other] + rest)
+    _save_temp()
+    return state()
 
 
 def add_control(kind='fader'):
@@ -173,8 +276,10 @@ def add_control(kind='fader'):
         'cc': cc if cc < 128 else 0,
         'ch': 1,
         'value': 0,
+        'slot': -1,
     })
     _renumber()
+    _layout()
     _controls[-1]['label'] = _label_for(_controls[-1])
     _save_temp()
     return state()

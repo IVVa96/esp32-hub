@@ -847,6 +847,12 @@ async def _route(method, path, query, headers, reader, writer):
                 await _json_reply(writer, 200, midi_engine.send_control(
                     query.get('id'), query.get('value'),
                     query.get('persist', '1') == '1'))
+            elif action == 'movectl' and method == 'POST':
+                await _json_reply(writer, 200, midi_engine.move_control(
+                    query.get('id'), query.get('slot')))
+            elif action == 'swapctl' and method == 'POST':
+                await _json_reply(writer, 200, midi_engine.swap_control(
+                    query.get('id'), query.get('slot')))
             else:
                 await _err(writer, 400, 'bad midi action')
         except Exception as e:
