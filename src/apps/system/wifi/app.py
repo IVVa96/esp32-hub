@@ -110,9 +110,8 @@ class WiFiScannerScreen(Screen):
         lbl_w   = ssd.width - lbl_x - _sx(40)
         if lbl_w < _sx(20):
             lbl_w = _sx(20)
-        self.status_lbl = Label(self.wri, TITLE_Y, lbl_x, lbl_w, justify=2)
+        self.status_lbl = Label(self.wri, TITLE_Y, lbl_x, lbl_w, justify=1)
         self.status_lbl.value('Scan 0')
-        ssd.hline(LB_X, LB_Y - _sy(5), LB_WIDTH, DIM)
 
         def on_select(*args):
             try:
@@ -153,7 +152,7 @@ class WiFiScannerScreen(Screen):
             except Exception as e:
                 error("on_select:", e)
 
-        self.lb = Listbox(self.wri, LB_Y, LB_X, elements=self.els,
+        self.lb = Listbox(self.wri, LB_Y + _sy(5), LB_X, elements=self.els,
                           dlines=LB_DLINES, width=LB_WIDTH,
                           bdcolor=LB_BORDER_COLOR, callback=on_select)
 
@@ -189,7 +188,6 @@ class WiFiScannerScreen(Screen):
         ssd.fill(0)
         try:
             self.title_lbl.show()
-            ssd.hline(LB_X, LB_Y - _sy(5), LB_WIDTH, DIM)
             self.status_lbl.value('Scan 0')
         except Exception:
             pass

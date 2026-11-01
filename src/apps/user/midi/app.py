@@ -414,17 +414,17 @@ class MidiScreen(Screen):
         _x3 = _x2 + PRESET_BTN_W + PRESET_BTN_GAP
         self.list_btn = Button(
             self.wri, PRESET_BTN_Y, _x1,
-            text='List', callback=_on_list,
+            text='LIST', callback=_on_list,
             width=PRESET_BTN_W, height=PRESET_BTN_H,
         )
         self.save_btn = Button(
             self.wri, PRESET_BTN_Y, _x2,
-            text='Save', callback=_on_save,
+            text='SAVE', callback=_on_save,
             width=PRESET_BTN_W, height=PRESET_BTN_H,
         )
         self.saveas_btn = Button(
             self.wri, PRESET_BTN_Y, _x3,
-            text='Save as', callback=_on_save_as,
+            text='SAVE AS', callback=_on_save_as,
             width=PRESET_BTN_W, height=PRESET_BTN_H,
         )
 
@@ -1634,8 +1634,8 @@ class PresetSaveScreen(Screen):
         ssd.fill(0)
         self.wri = make_writer()
 
-        Label(self.wri, PW_Y_TITLE, CS_MARGIN, 'Save preset')
-        Label(self.wri, PW_Y_LABEL, CS_MARGIN, 'Name:')
+        Label(self.wri, PW_Y_TITLE, CS_MARGIN, 'SAVE PRESET')
+        Label(self.wri, PW_Y_LABEL, CS_MARGIN, 'NAME:')
 
         init = PresetSaveScreen.initial_name or ''
         self.name_lbl = Label(self.wri, PW_Y_INPUT, CS_MARGIN,
@@ -1773,8 +1773,8 @@ class PresetRenameScreen(Screen):
         ssd.fill(0)
         self.wri = make_writer()
 
-        Label(self.wri, PW_Y_TITLE, CS_MARGIN, 'Rename preset')
-        Label(self.wri, PW_Y_LABEL, CS_MARGIN, 'New name:')
+        Label(self.wri, PW_Y_TITLE, CS_MARGIN, 'RENAME PRESET')
+        Label(self.wri, PW_Y_LABEL, CS_MARGIN, 'NEW NAME:')
 
         init = PresetRenameScreen.initial_name or ''
         self.name_lbl = Label(self.wri, PW_Y_INPUT, CS_MARGIN,
@@ -1918,12 +1918,12 @@ class PresetListScreen(Screen):
 
         self.title_lbl = Label(
             self.wri, TITLE_Y, TITLE_X, _sx(150))
-        self.title_lbl.value('Presets')
+        self.title_lbl.value('PRESETS')
 
         self.lb = Listbox(
-            self.wri, LB_Y, LB_X,
+            self.wri, LB_Y + _sy(5), LB_X,
             elements=self.els,
-            dlines=LB_DLINES - 2,
+            dlines=LB_DLINES - 3,
             width=LB_WIDTH,
             bdcolor=LB_BORDER_COLOR,
             callback=self._on_pick,
@@ -1940,17 +1940,17 @@ class PresetListScreen(Screen):
         _bw = (LB_WIDTH - 2 * 4) // 3
         self.btn_delete = Button(
             self.wri, _by, LB_X,
-            text='Delete', callback=_on_delete,
+            text='DELETE', callback=_on_delete,
             width=_bw, height=_sy(22),
         )
         self.btn_rename = Button(
             self.wri, _by, LB_X + _bw + 4,
-            text='Rename', callback=_on_rename,
+            text='RENAME', callback=_on_rename,
             width=_bw, height=_sy(22),
         )
         self.btn_select = Button(
             self.wri, _by, LB_X + 2 * (_bw + 4),
-            text='Select', callback=_on_select,
+            text='SELECT', callback=_on_select,
             width=_bw, height=_sy(22),
         )
 
@@ -1978,7 +1978,7 @@ class PresetListScreen(Screen):
             pass
         await asyncio.sleep_ms(duration_ms)
         try:
-            self.title_lbl.value('Presets')
+            self.title_lbl.value('PRESETS')
         except Exception:
             pass
 
@@ -2004,7 +2004,7 @@ class PresetListScreen(Screen):
             pass
 
         try:
-            self.title_lbl.value('Presets')
+            self.title_lbl.value('PRESETS')
             self.lb.value(0)
             self.lb.update()
         except Exception:
@@ -2096,12 +2096,12 @@ class PresetSelectScreen(Screen):
 
         self.els = self._build_els()
 
-        Label(self.wri, TITLE_Y, TITLE_X, 'Select presets')
+        Label(self.wri, TITLE_Y, TITLE_X, 'SELECT PRESETS')
 
         self.lb = Listbox(
-            self.wri, LB_Y, LB_X,
+            self.wri, LB_Y + _sy(5), LB_X,
             elements=self.els,
-            dlines=LB_DLINES - 2,
+            dlines=LB_DLINES - 3,
             width=LB_WIDTH,
             bdcolor=LB_BORDER_COLOR,
             callback=self._on_toggle,
@@ -2116,12 +2116,12 @@ class PresetSelectScreen(Screen):
         _bw = (LB_WIDTH - _sx(6)) // 2
         self.btn_cancel = Button(
             self.wri, _by, LB_X,
-            text='Cancel', callback=_on_cancel,
+            text='CANCEL', callback=_on_cancel,
             width=_bw, height=_sy(22),
         )
         self.btn_delete = Button(
             self.wri, _by, LB_X + _bw + _sx(6),
-            text='Delete', callback=_on_delete,
+            text='DELETE', callback=_on_delete,
             width=_bw, height=_sy(22),
         )
 
@@ -2220,7 +2220,7 @@ class PresetConfirmDeleteScreen(Screen):
 
         names = getattr(MidiScreen, '_presets_confirm_delete', []) or []
 
-        Label(self.wri, TITLE_Y, TITLE_X, 'Delete')
+        Label(self.wri, TITLE_Y, TITLE_X, 'DELETE')
         Label(self.wri, TITLE_Y + _sy(20), CS_MARGIN,
               'Delete {} preset(s)?'.format(len(names)))
         if names:
@@ -2238,12 +2238,12 @@ class PresetConfirmDeleteScreen(Screen):
         _bw = (LB_WIDTH - _sx(6)) // 2
         self.btn_no = Button(
             self.wri, _by, LB_X,
-            text='No', callback=_no,
+            text='NO', callback=_no,
             width=_bw, height=_sy(28),
         )
         self.btn_yes = Button(
             self.wri, _by, LB_X + _bw + _sx(6),
-            text='Yes', callback=_yes,
+            text='YES', callback=_yes,
             width=_bw, height=_sy(28),
         )
 
@@ -2290,7 +2290,7 @@ class ModeSelectScreen(Screen):
         ssd.fill(0)
         self.wri = make_writer()
 
-        Label(self.wri, TITLE_Y, TITLE_X, 'MIDI mode')
+        Label(self.wri, TITLE_Y, TITLE_X, 'MIDI MODE')
         Label(self.wri, TITLE_Y + _sy(14), TITLE_X,
               'Wire = cable, BLE = wireless')
 
