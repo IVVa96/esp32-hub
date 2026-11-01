@@ -38,6 +38,7 @@
   .dot{width:7px;height:7px;background:var(--dim);display:inline-block;
     box-shadow:0 0 0 1px #000}
   .dot.on{background:var(--ok);box-shadow:0 0 7px var(--ok)}
+  #modeInfo{position:relative;top:1px}
   .meta{margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .tiny{border:1px solid var(--line2);padding:6px 8px 5px;font-size:7px;
     background:var(--panel2);color:var(--muted);box-shadow:none}
@@ -63,6 +64,7 @@
   .btn.danger{color:var(--danger);border-color:var(--danger)}
   .btn.primary{border-color:var(--accent);color:var(--accent)}
   .dirty{margin-left:auto;font-size:7px;color:var(--dim)}
+  .dirty[hidden]{display:none}
   .dirty.on{color:var(--accent)}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(216px,1fr));gap:10px}
   .grid[hidden],.bar[hidden]{display:none}
@@ -143,6 +145,8 @@
     box-shadow:0 0 18px rgba(255,140,26,.25)}
   .toast[hidden]{display:none}
   .toast.err{border-color:var(--danger);color:var(--danger)}
+  .toast.ok{border-color:var(--ok);color:var(--ok);
+    box-shadow:0 0 18px rgba(125,255,154,.20)}
   @media (max-width:720px){
     header{gap:10px;padding:10px 12px;flex-wrap:wrap}
     .meta{width:100%}
@@ -175,7 +179,8 @@
     <button class="btn" id="saveAsBtn">SAVE AS</button>
     <button class="btn" id="renameBtn">RENAME</button>
     <button class="btn danger" id="deleteBtn">DELETE</button>
-    <span class="dirty" id="dirty">CLEAN</span>
+    <button class="btn danger" id="resetBtn">RESET</button>
+    <span class="dirty" id="dirty" hidden></span>
   </section>
 
   <nav class="tabs">
@@ -210,7 +215,7 @@ function $(id) { return document.getElementById(id); }
 function toast(msg, isErr) {
   var t = $("toast");
   t.textContent = msg;
-  t.className = isErr ? "toast err" : "toast";
+  t.className = isErr === "ok" ? "toast ok" : (isErr ? "toast err" : "toast");
   t.hidden = false;
   clearTimeout(toast._t);
   toast._t = setTimeout(function () { t.hidden = true; }, 2600);
@@ -286,8 +291,9 @@ function apply(d) {
     pr.appendChild(o);
   }
   pr.value = want;
-  $("dirty").textContent = d.dirty ? "UNSAVED *" : "CLEAN";
+  $("dirty").textContent = "UNSAVED *";
   $("dirty").className = d.dirty ? "dirty on" : "dirty";
+  $("dirty").hidden = !d.dirty;
   drawPins(d);
   drawSurface(d);
   drawControls(d);
@@ -892,36 +898,76 @@ $("surfaceWrap").addEventListener("click", function (e) {
   });
 });
 
-$("loadBtn").onclick = function () {  var n = $("preset").value;
+$("loadBtn").onclick = function () {
+  var n = $("preset").value;
   if (!n) return;
-  post("action=load&name=" + encodeURIComponent(n));
+  post("action=load&name=" + encodeURIComponent(n)).then(function (d) {
+    if (d) toast("Loaded: " + n.toUpperCase(), "ok");
+  });
 };
+
+function askName(title, def) {
+  var n = prompt(title, def || "");
+  if (!n) return null;
+  n = n.trim();
+  return n || null;
+}
 
 $("saveBtn").onclick = function () {
   if (!S) return;
-  post("action=save&name=" + encodeURIComponent(S.preset) +
-       "&overwrite=1");
+  if (S.preset === "default") { doSaveAs(); return; }
+  var name = S.preset;
+  post("action=save&name=" + encodeURIComponent(name) +
+       "&overwrite=1").then(function (d) {
+    if (d) toast("Saved: " + name.toUpperCase(), "ok");
+  });
 };
 
-$("saveAsBtn").onclick = function () {
-  var n = prompt("Preset name", S ? S.preset : "preset");
-  if (!n) return;
-  post("action=save&name=" + encodeURIComponent(n) +
-       "&overwrite=" + (confirm("Overwrite if exists?") ? "1" : "0"));
-};
+function doSaveAs() {
+  var name = askName("Preset name", S ? S.preset : "");
+  if (!name) return;
+  var ow = 0;
+  if (S && S.presets.indexOf(name) >= 0) {
+    if (!confirm("Preset " + name + " exists. Overwrite?")) return;
+    ow = 1;
+  }
+  post("action=save&name=" + encodeURIComponent(name) +
+       "&overwrite=" + ow).then(function (d) {
+    if (d) toast("Saved as: " + name.toUpperCase(), "ok");
+  });
+}
+
+$("saveAsBtn").onclick = doSaveAs;
 
 $("renameBtn").onclick = function () {
-  if (!S || S.preset === "default") { toast("default cannot be renamed", true); return; }
-  var n = prompt("New name", S.preset);
-  if (!n) return;
-  post("action=rename&old=" + encodeURIComponent(S.preset) +
-       "&new=" + encodeURIComponent(n));
+  if (!S) return;
+  if (S.preset === "default") {
+    toast("Save the preset first, then rename it", true);
+    return;
+  }
+  var old = S.preset;
+  var n = askName("New name", old);
+  if (!n || n === old) return;
+  post("action=rename&old=" + encodeURIComponent(old) +
+       "&new=" + encodeURIComponent(n)).then(function (d) {
+    if (d) toast("Renamed to: " + n.toUpperCase(), "ok");
+  });
 };
 
 $("deleteBtn").onclick = function () {
   if (!S || S.preset === "default") { toast("default cannot be deleted", true); return; }
   if (!confirm("Delete preset " + S.preset + "?")) return;
-  post("action=delete&name=" + encodeURIComponent(S.preset));
+  var gone = S.preset;
+  post("action=delete&name=" + encodeURIComponent(gone)).then(function (d) {
+    if (d) toast("Deleted: " + gone.toUpperCase(), "ok");
+  });
+};
+
+$("resetBtn").onclick = function () {
+  if (!confirm("Reset everything back to default?")) return;
+  post("action=reset").then(function (d) {
+    if (d) toast("Reset to default", "ok");
+  });
 };
 
 $("usbBtn").onclick = function () { post("action=mode&mode=wire"); };

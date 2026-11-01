@@ -301,6 +301,31 @@ def rename(old_name, new_name):
     return True
 
 
+def save_last(name):
+    """Remember which preset should be restored on the next start."""
+    try:
+        with open(_path('_last'), 'w') as f:
+            f.write(json.dumps({'preset': name or MIDI_DEFAULT_PRESET}))
+        return True
+    except Exception as e:
+        error("save_last:", e)
+        return False
+
+
+def load_last():
+    try:
+        with open(_path('_last'), 'r') as f:
+            data = json.loads(f.read())
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    name = data.get('preset')
+    if isinstance(name, str) and name:
+        return name
+    return None
+
+
 def save_temp(cfg, base, controls=None):
     global _temp_cache, _temp_base, _temp_controls
     if not _ensure_dir():
@@ -316,6 +341,7 @@ def save_temp(cfg, base, controls=None):
     payload = {'base': base, 'pins': pins, 'controls': controls}
     _temp_base = base
     _temp_controls = controls
+    save_last(base)
     try:
         new_json = json.dumps(payload)
     except Exception as e:

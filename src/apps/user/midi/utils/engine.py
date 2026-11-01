@@ -549,14 +549,8 @@ def load(name):
     global _controls
     _ensure_loaded()
     if name == MIDI_DEFAULT_PRESET:
-        MidiScreen._apply_preset(None)
-        MidiScreen._current_preset = name
-        MidiScreen._dirty = False
-        _controls = midi_save.load_controls(name)
-        _renumber()
-        _save_temp()
-        MidiScreen._rebuild_all(_host)
-        return state()
+        # "default" is the clean slate: no pins configured, no widgets.
+        return reset()
     pins = midi_save.load(name)
     if pins is None:
         return {'ok': False, 'error': 'preset not found'}
@@ -566,6 +560,20 @@ def load(name):
     _controls = midi_save.load_controls(name)
     _renumber()
     _save_temp()
+    MidiScreen._rebuild_all(_host)
+    return state()
+
+
+def reset():
+    """Drop every change and go back to the default preset."""
+    global _controls
+    _ensure_loaded()
+    MidiScreen._apply_preset(None)
+    MidiScreen._current_preset = MIDI_DEFAULT_PRESET
+    MidiScreen._dirty = False
+    _controls = []
+    _renumber()
+    midi_save.save_temp(MidiScreen._cfg, MIDI_DEFAULT_PRESET, [])
     MidiScreen._rebuild_all(_host)
     return state()
 

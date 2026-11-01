@@ -598,6 +598,10 @@ class MidiScreen(Screen):
         # Иначе пары энкодеров сбрасываются при каждом открытии экрана.
         if pins is not None:
             cls._current_preset = base or MIDI_DEFAULT_PRESET
+            try:
+                midi_save.save_last(cls._current_preset)
+            except Exception:
+                pass
             cls._apply_preset(pins)
             file_pins = midi_save.load(base) if base and base != MIDI_DEFAULT_PRESET else None
             if file_pins is not None:
@@ -606,9 +610,14 @@ class MidiScreen(Screen):
                 cls._dirty = True
             return
 
-        base = MIDI_DEFAULT_PRESET
+        base = midi_save.load_last() or MIDI_DEFAULT_PRESET
+        pins = None
+        if base != MIDI_DEFAULT_PRESET:
+            pins = midi_save.load(base)
+            if pins is None:
+                base = MIDI_DEFAULT_PRESET
         cls._current_preset = base
-        cls._apply_preset(None)
+        cls._apply_preset(pins)
         cls._dirty = False
         try:
             midi_save.save_temp(cls._cfg, base)

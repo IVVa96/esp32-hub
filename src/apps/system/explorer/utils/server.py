@@ -853,6 +853,8 @@ async def _route(method, path, query, headers, reader, writer):
                     query.get('lite') == '1')
                 await _json_reply(writer, 200, st)
                 gc.collect()
+            elif action == 'reset' and method == 'POST':
+                await _json_reply(writer, 200, midi_engine.reset())
             elif action == 'movectl' and method == 'POST':
                 await _json_reply(writer, 200, midi_engine.move_control(
                     query.get('id'), query.get('slot')))
