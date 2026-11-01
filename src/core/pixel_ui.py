@@ -204,19 +204,22 @@ class PixelMenu(Widget):
         fill(x, y, w, h, bg)
         frame(x, y, w, h, bd)
 
-        # иконка
+        # иконка 22x22
         icon = self.icons[i] if self.icons and i < len(self.icons) else (
             'web' if i == 0 else 'apps')
-        icon_h = 22 if icon in ('usb', 'bt') else 16
-        ix, iy = x + 12, y + (h - icon_h) // 2
+        ix, iy = x + 8, y + (h - 22) // 2
         if icon == 'power':
-            ssd.vline(ix + 8, iy + 1, 6, fg)
-            ssd.hline(ix + 4, iy + 3, 3, fg)
-            ssd.hline(ix + 9, iy + 3, 3, fg)
-            ssd.vline(ix + 3, iy + 4, 6, fg)
-            ssd.vline(ix + 12, iy + 4, 6, fg)
-            ssd.hline(ix + 4, iy + 10, 3, fg)
-            ssd.hline(ix + 9, iy + 10, 3, fg)
+            # ровный круг с вырезом сверху и вертикальной палочкой
+            cx, cy, r = ix + 11, iy + 11, 8
+            try:
+                ssd.ellipse(cx, cy, r, r, fg)
+            except Exception:
+                for dy in range(-r, r + 1):
+                    dx = int((r * r - dy * dy) ** 0.5)
+                    ssd.hline(cx - dx, cy + dy, 2, fg)
+                    ssd.hline(cx + dx - 1, cy + dy, 2, fg)
+            fill(cx - 2, cy - r - 1, 5, 6, bg)
+            fill(cx - 1, iy, 2, 10, fg)
         elif icon == 'bt':
             # Классический рунический значок Bluetooth
             ssd.line(ix + 8, iy + 1, ix + 8, iy + 20, fg)
@@ -225,40 +228,28 @@ class PixelMenu(Widget):
             ssd.line(ix + 8, iy + 20, ix + 12, iy + 15, fg)
             ssd.line(ix + 12, iy + 15, ix + 4, iy + 6, fg)
         elif icon == 'usb':
-            # Значок USB: трезубец с треугольной стрелкой сверху,
-            # квадратом на правой ветви и круглыми узлами
-            ssd.hline(ix + 8, iy + 0, 1, fg)
-            ssd.hline(ix + 7, iy + 1, 3, fg)
-            ssd.hline(ix + 6, iy + 2, 5, fg)
-            ssd.hline(ix + 5, iy + 3, 7, fg)
-            ssd.hline(ix + 5, iy + 4, 7, fg)
-            ssd.vline(ix + 8, iy + 4, 15, fg)
-            # правая ветвь
-            ssd.line(ix + 8, iy + 13, ix + 12, iy + 8, fg)
-            ssd.vline(ix + 12, iy + 4, 5, fg)
-            fill(ix + 11, iy + 1, 4, 4, fg)
-            # левая ветвь
-            ssd.line(ix + 8, iy + 16, ix + 4, iy + 11, fg)
-            ssd.hline(ix + 2, iy + 8, 3, fg)
-            ssd.hline(ix + 1, iy + 9, 5, fg)
-            ssd.hline(ix + 1, iy + 10, 5, fg)
-            ssd.hline(ix + 1, iy + 11, 5, fg)
-            ssd.hline(ix + 2, iy + 12, 3, fg)
-            # нижний узел
-            ssd.hline(ix + 7, iy + 17, 3, fg)
-            ssd.hline(ix + 6, iy + 18, 5, fg)
-            ssd.hline(ix + 6, iy + 19, 5, fg)
-            ssd.hline(ix + 6, iy + 20, 5, fg)
-            ssd.hline(ix + 7, iy + 21, 3, fg)
+            # Ровный симметричный значок USB: стрелка, ствол, две ветви
+            ssd.hline(ix + 11, iy + 0, 1, fg)
+            ssd.hline(ix + 10, iy + 1, 3, fg)
+            ssd.hline(ix + 9, iy + 2, 5, fg)
+            ssd.hline(ix + 8, iy + 3, 7, fg)
+            ssd.vline(ix + 11, iy + 4, 16, fg)
+            ssd.line(ix + 11, iy + 13, ix + 5, iy + 9, fg)
+            ssd.line(ix + 11, iy + 13, ix + 17, iy + 9, fg)
+            fill(ix + 3, iy + 5, 4, 4, fg)
+            fill(ix + 15, iy + 5, 4, 4, fg)
+            fill(ix + 10, iy + 19, 3, 3, fg)
         elif icon == 'web':
-            frame(ix, iy, 16, 16, fg)
-            ssd.hline(ix + 1, iy + 8, 14, fg)
-            ssd.vline(ix + 8, iy + 1, 14, fg)
+            # миниатюра плиток приложений (Web UI)
+            for bx, by in ((0, 0), (12, 0), (0, 12), (12, 12)):
+                frame(ix + bx, iy + by, 10, 10, fg)
+                fill(ix + bx + 3, iy + by + 3, 4, 3, fg)
         else:
-            frame(ix, iy + 2, 16, 12, fg)
-            fill(ix + 3, iy + 5, 3, 3, fg)
-            ssd.hline(ix + 8, iy + 6, 5, fg)
-            ssd.hline(ix + 3, iy + 10, 9, fg)
+            # миниатюра списка (Classic UI)
+            for n in range(4):
+                ry = iy + 1 + n * 5
+                fill(ix, ry + 1, 3, 3, fg)
+                ssd.hline(ix + 6, ry + 2, 16, fg)
 
         label = self.items[i].upper()
         has_desc = bool(self.descriptions)
@@ -266,9 +257,13 @@ class PixelMenu(Widget):
         # Блок центрируется по высоте кнопки, иконка — по центру блока.
         text_h = 26 if has_desc else 16
         ty = y + (h - text_h) // 2
-        big(label, x + (w - len(label) * CW * 2) // 2 if self.center_labels else x + 38, ty, 2, fg)
+        tw = len(label) * CW * 2
+        tx = x + 40
+        if tx + tw > x + w - 6:
+            tx = max(x + 36, x + w - 6 - tw)
+        big(label, tx, ty, 2, fg)
         if has_desc:
-            text(self.descriptions[i], x + 38, ty + 18, sub)
+            text(self.descriptions[i], tx, ty + 18, sub)
 
     def _row(self, i, y):
         selected = i == self.idx
