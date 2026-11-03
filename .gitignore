@@ -3,6 +3,8 @@
 /src.code-workspace
 /.mpy-workbench/
 /src/.mpy-workbench/
+/img/
+/.gitignore
 
 # Python bytecode
 __pycache__/
