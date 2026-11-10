@@ -83,7 +83,7 @@ class LauncherScreen(Screen):
         self.wri = make_writer()
 
         big_c('ESP32', 20, 2, AMBER)
-        big_c('MULTITOOL', 38, 2, WHITE)
+        big_c('HUB', 38, 2, WHITE)
 
         y = 20 + 36
         ssd.hline(MARGIN, y, SCREEN_W - 2 * MARGIN, AMBER)
@@ -107,7 +107,7 @@ class LauncherScreen(Screen):
         self._busy = False
         screen_bg()
         big_c('ESP32', 20, 2, AMBER)
-        big_c('MULTITOOL', 38, 2, WHITE)
+        big_c('HUB', 38, 2, WHITE)
         y = 56
         ssd.hline(MARGIN, y, SCREEN_W - 2 * MARGIN, AMBER)
         ssd.fill_rect(MARGIN - 4, y - 1, 3, 3, AMBER)
