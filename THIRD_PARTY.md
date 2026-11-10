@@ -1,13 +1,13 @@
 # Сторонний код и ресурсы
 
-Проект использует несколько библиотек и один шрифт. Они лежат в репозитории
+Проект использует библиотеки (и не только) других разработчиков. Они лежат в репозитории
 целиком, чтобы прошивка собиралась без установки пакетов, и сохраняют
-оригинальные заголовки с копирайтами — не удаляйте их при правках.
+оригинальные заголовки с копирайтами.
 
 | Компонент | Где | Автор | Лицензия |
-|---|---|---|---|
+|-----------|-----|-------|----------|
 | micro-gui | `src/gui/` | Peter Hinch | MIT |
-| Драйвер ILI9341, `boolpalette` | `src/drivers/` | Peter Hinch, на основе [rdagger/micropython-ili9341](https://github.com/rdagger/micropython-ili9341) | MIT |
+| Драйвер ILI9341 и `boolpalette` | `src/drivers/` | Peter Hinch, на основе [rdagger/micropython-ili9341](https://github.com/rdagger/micropython-ili9341) | MIT |
 | primitives (encoder, pushbutton, delay_ms и др.) | `src/gui/primitives/` | Peter Hinch | MIT |
 | aioble | `src/lib/aioble/` | Jim Mussared, проект MicroPython | MIT |
 | USB device, USB MIDI | `src/lib/usb/device/` | Angus Gratton, Paul Hamshere | MIT |
