@@ -8,7 +8,7 @@ __pycache__/
 *.py[cod]
 *.mpy
 /img
-.FCBak
+*.FCBak
 
 # Device runtime state and secrets
 /src/core/power_state.json
