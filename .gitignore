@@ -1,15 +1,16 @@
 # Local IDE / tooling
+.mpy-workbench/
 /.vscode/
 /src.code-workspace
-/.mpy-workbench/
-/src/.mpy-workbench/
-/img/
-/.gitignore
 
 # Python bytecode
 __pycache__/
 *.py[cod]
 *.mpy
+
+# Local dev assets
+/img/
+/tools/
 
 # Device runtime state and secrets
 /src/core/power_state.json
