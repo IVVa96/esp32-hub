@@ -16,8 +16,9 @@ from apps.user.midi.utils import save as midi_save
 TYPES = ('—', 'Btn/Sw', 'Toggle Btn', 'Pot', 'Encoder')
 ACTIVE_TYPES = ('Btn/Sw', 'Toggle Btn', 'Pot', 'Encoder')
 
-# Web control surface: faders, buttons, switches, knobs -> CC messages.
-KINDS = ('fader', 'button', 'switch')
+# Web control surface: faders, buttons, switches, knobs -> CC messages,
+# pads -> MIDI notes.
+KINDS = ('fader', 'button', 'switch', 'pad')
 MAX_CONTROLS = 16
 COLS = 8          # Surface grid columns (shared with the web page).
 
@@ -368,6 +369,22 @@ def send_control(cid, value=None, persist=True, lite=False):
             ch = (c['ch'] - 1) & 0x0F
             hw.send_cc(ch, c['cc'], 127)
             hw.send_cc(ch, c['cc'], 0)
+        except Exception:
+            return {'ok': False, 'error': 'send failed'}
+        c['value'] = 0
+        if persist:
+            _save_temp()
+        if lite:
+            return {'ok': True}
+        return state()
+    if c['kind'] == 'pad':
+        try:
+            ch = (c['ch'] - 1) & 0x0F
+            v = c['value']
+            if v > 0:
+                hw.send_note(ch, c['cc'], v, True)
+            else:
+                hw.send_note(ch, c['cc'], 0, False)
         except Exception:
             return {'ok': False, 'error': 'send failed'}
         c['value'] = 0

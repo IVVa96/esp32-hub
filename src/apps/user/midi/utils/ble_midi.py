@@ -53,18 +53,17 @@ def is_connected():
         return False
 
 
-def _packet(channel, control, value):
-    """BLE-MIDI: заголовок (старшие 6 бит времени) + младшие 7 бит + CC."""
+def _packet(channel, control, value, status=0xB0):
+    """BLE-MIDI: заголовок (старшие 6 бит времени) + младшие 7 бит + сообщение."""
     ts = time.ticks_ms() & 0x1FFF
     hdr = 0x80 | ((ts >> 7) & 0x3F)
     return bytes((hdr, ts & 0x7F,
-                  0xB0 | (channel & 0x0F),
+                  status | (channel & 0x0F),
                   control & 0x7F,
                   value & 0x7F))
 
 
-def send_cc(channel, control, value):
-    """Отправить CC через BLE. Безопасно вызывать без подключения."""
+def _send_packet(packet):
     conn = _connection
     char = _char
     if conn is None or char is None:
@@ -72,10 +71,21 @@ def send_cc(channel, control, value):
     try:
         if not conn.is_connected():
             return
-        char.notify(conn, _packet(channel, control, value))
+        char.notify(conn, packet)
     except Exception:
         # Обрыв связи: следующие пакеты просто не уйдут.
         pass
+
+
+def send_cc(channel, control, value):
+    """Отправить CC через BLE. Безопасно вызывать без подключения."""
+    _send_packet(_packet(channel, control, value, 0xB0))
+
+
+def send_note(channel, note, velocity, on=True):
+    """Отправить Note On/Off через BLE."""
+    _send_packet(_packet(channel, note, velocity,
+                         0x90 if on else 0x80))
 
 
 def _register():

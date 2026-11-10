@@ -47,8 +47,8 @@ _dir_ok = False
 
 _VALID_TYPES = ('—', 'Btn/Sw', 'Toggle Btn', 'Pot', 'Encoder')
 
-# Контролы веб-пульта: фейдер, кнопка, переключатель, ручка.
-_VALID_KINDS = ('fader', 'button', 'switch')
+# Контролы веб-пульта: фейдер, кнопка, переключатель, ручка, пэд (нота).
+_VALID_KINDS = ('fader', 'button', 'switch', 'pad')
 
 
 def _normalize_type(t):

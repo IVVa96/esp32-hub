@@ -65,6 +65,9 @@ def send_cc(channel, control, value):
     Для одного и того же контрола значение в очереди заменяется, а не
     выстраивается в хвост: при быстром движении фейдера хост получает
     свежее значение сразу, а не догоняет очередь из устаревших.
+
+    Элемент очереди: (channel, number, value, kind), где kind
+    0 — CC, 1 — Note On, 2 — Note Off.
     """
     ch = channel & 0x0F
     cc = control & 0x7F
@@ -72,12 +75,24 @@ def send_cc(channel, control, value):
     q = _midi_queue
     for i in range(len(q)):
         e = q[i]
-        if e[0] == ch and e[1] == cc:
-            q[i] = (ch, cc, val)
+        if e[0] == ch and e[1] == cc and e[3] == 0:
+            q[i] = (ch, cc, val, 0)
             return
     if len(q) < 32:
         try:
-            q.append((ch, cc, val))
+            q.append((ch, cc, val, 0))
+        except Exception:
+            pass
+
+
+def send_note(channel, note, velocity, on=True):
+    """Отправить ноту: on=True — Note On, on=False — Note Off."""
+    ch = channel & 0x0F
+    n = note & 0x7F
+    val = velocity & 0x7F
+    if len(_midi_queue) < 32:
+        try:
+            _midi_queue.append((ch, n, val, 1 if on else 2))
         except Exception:
             pass
 
@@ -96,15 +111,23 @@ async def _midi_flush_loop():
                     ble_midi_ready = False
             usb = _usb_midi
             usb_ready = _MIDI_OK and usb is not None
-            for ch, cc, val in batch:
+            for ch, num, val, kind in batch:
                 if ble_midi_ready:
                     try:
-                        ble_midi.send_cc(ch, cc, val)
+                        if kind == 0:
+                            ble_midi.send_cc(ch, num, val)
+                        else:
+                            ble_midi.send_note(ch, num, val, kind == 1)
                     except Exception:
                         pass
                 elif usb_ready:
                     try:
-                        usb.control_change(ch, cc, val)
+                        if kind == 0:
+                            usb.control_change(ch, num, val)
+                        elif kind == 1:
+                            usb.note_on(ch, num, val)
+                        else:
+                            usb.note_off(ch, num, val)
                     except Exception:
                         pass
             continue

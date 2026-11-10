@@ -198,6 +198,7 @@
       <label>ADD</label>
       <button class="btn" data-add="fader">FADER</button>
       <button class="btn" data-add="button">BUTTON</button>
+      <button class="btn" data-add="pad">PAD</button>
       <button class="btn" data-add="switch">SWITCH</button>
     </section>
     <section class="grid" id="ctlGrid"></section>
@@ -313,12 +314,14 @@ function esc(s) {
 }
 
 function ctlPrefix(kind) {
-  return kind === "fader" ? "F" : (kind === "switch" ? "S" : "B");
+  return kind === "fader" ? "F" :
+    (kind === "switch" ? "S" : (kind === "pad" ? "P" : "B"));
 }
 
 function ctlTags(c) {
+  var num = c.kind === "pad" ? "NOTE " : "CC ";
   return '<div class="ctl-tags"><span class="tid">' + ctlPrefix(c.kind) + c.num +
-    "</span><span>CC " + c.cc + "</span><span>CH " + c.ch + "</span></div>";
+    "</span><span>" + num + c.cc + "</span><span>CH " + c.ch + "</span></div>";
 }
 
 function rawPost(q) {
@@ -707,7 +710,7 @@ function drawControls(d) {
       '<span class="kind">' + c.kind.toUpperCase() + "</span>" +
       '<button class="del" title="remove">&times;</button></div>';
     el.appendChild(row("NAME", textInput("label", c.label, 16)));
-    el.appendChild(row("CC", input("cc", c.cc, 0, 127)));
+    el.appendChild(row(c.kind === "pad" ? "NOTE" : "CC", input("cc", c.cc, 0, 127)));
     el.appendChild(row("CH", input("ch", c.ch, 1, 16)));
     g.appendChild(el);
   }
@@ -915,10 +918,11 @@ $("surfaceWrap").addEventListener("pointerdown", function (e) {
   e.stopPropagation();
   b.classList.add("flash");
   setTimeout(function () { b.classList.remove("flash"); }, 160);
-  if (c.kind !== "button") return;
+  if (c.kind !== "button" && c.kind !== "pad") return;
   padHeld = b;
   b.classList.add("on");
-  rawPost("action=sendctl&id=" + c.id + "&value=127&persist=1");
+  // Same fast path as faders: tiny request, one-byte reply, no state JSON.
+  _fast("action=sendctl&id=" + c.id + "&value=127&persist=0&lite=1");
 });
 
 function padEnd() {
@@ -927,9 +931,10 @@ function padEnd() {
   padHeld = null;
   b.classList.remove("on");
   var card = b.closest(".ctl");
-  if (!card) return;
-  rawPost("action=sendctl&id=" + card.getAttribute("data-cid") +
-          "&value=0&persist=1");
+  if (card) {
+    _fast("action=sendctl&id=" + card.getAttribute("data-cid") +
+          "&value=0&persist=0&lite=1");
+  }
 }
 
 $("surfaceWrap").addEventListener("pointerup", padEnd);
@@ -944,16 +949,12 @@ $("surfaceWrap").addEventListener("click", function (e) {
   var cid = card.getAttribute("data-cid");
   var c0 = ctlById(cid);
   if (!c0 || c0.kind !== "switch") return;
-  rawPost("action=sendctl&id=" + cid).then(function (d) {
-    if (!d || !d.ok) return;
-    var list = d.controls || [], c = null;
-    for (var i = 0; i < list.length; i++) {
-      if (String(list[i].id) === String(cid)) c = list[i];
-    }
-    if (!c) return;
-    b.textContent = c.value ? "ON" : "OFF";
-    b.className = "padbtn" + (c.value ? " on" : "");
-  });
+  // Toggle locally and use the fader-speed lite request; the board flips
+  // its own state the same way. persist=1 keeps the switch position saved.
+  c0.value = c0.value ? 0 : 127;
+  b.textContent = c0.value ? "ON" : "OFF";
+  b.className = "padbtn" + (c0.value ? " on" : "");
+  _fast("action=sendctl&id=" + cid + "&persist=1&lite=1");
 });
 
 $("loadBtn").onclick = function () {
