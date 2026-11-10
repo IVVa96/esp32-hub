@@ -125,7 +125,7 @@
 <main>
   <div class="sysline">
     <span class="prompt">&gt;</span><span>APPLICATIONS</span>
-    <span class="sysright">ESP32-HUB // WEB PORTAL</span>
+    <span class="sysright" id="sysRight">ESP32-HUB // WEB PORTAL</span>
   </div>
   <section class="grid" id="grid"></section>
   <div class="empty" id="empty">NO APPLICATIONS FOUND</div>
@@ -184,6 +184,12 @@
         label = "offline";
       }
       $("modeInfo").textContent = label;
+      var sr = $("sysRight");
+      if (sr) {
+        sr.textContent = d.version
+          ? "ESP32-HUB v" + d.version + " // WEB PORTAL"
+          : "ESP32-HUB // WEB PORTAL";
+      }
       $("dot").className = "dot on";
     }).catch(function () {
       $("modeInfo").textContent = "offline";

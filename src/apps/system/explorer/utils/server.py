@@ -17,6 +17,7 @@ from core import power
 from core import web_mode
 from core import time_sync
 from core import app_registry
+from version import __version__
 
 _HTML = None
 _HTML_PATH = 'apps/system/explorer/utils/index.html'
@@ -287,6 +288,7 @@ def _info():
     data = {
         'ok': True,
         'title': 'ESP32 Files',
+        'version': __version__,
         'roots': _roots(),
         'free': free,
         'total': total,

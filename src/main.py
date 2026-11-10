@@ -10,6 +10,7 @@ from gui.core.ugui import ssd, Screen
 from gui.core.colors import BLACK, WHITE, AMBER, DIM
 
 from config import SCREEN_W, STATUS_BAR_ENABLED
+from version import __version__
 from core.ui import make_writer, redraw_status_bar, wait_release_all
 from core.logger import error
 from core.pixel_ui import (
@@ -65,6 +66,8 @@ def _draw_fw_info():
     if _FW_BUILD:
         text('BUILD', MARGIN, 258, DIM)
         text_r(_FW_BUILD, SCREEN_W - MARGIN, 258, DIM)
+    text('HUB', MARGIN, 270, DIM)
+    text_r('v' + __version__, SCREEN_W - MARGIN, 270, WHITE)
 
 
 def _load_screen(module_path):
