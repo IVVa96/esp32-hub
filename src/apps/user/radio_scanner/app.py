@@ -37,8 +37,9 @@ CH_COUNT    = CH_LAST - CH_FIRST + 1
 RSSI_MIN    = -95.0          # низ графика
 RSSI_MAX    = -35.0          # верх графика
 
-SCAN_GAP_MS = 400            # пауза между проходами сканирования
+SCAN_GAP_MS = 20             # пауза между проходами (максимальная скорость)
 PEAK_DECAY  = 2.0            # спад пика, % за обновление
+UPDATE_EVERY = 5             # обновлять график каждые N сканов (для скорости)
 
 # ---- Геометрия графика ----
 GX   = _sx(8)
@@ -80,10 +81,11 @@ class RadioScannerScreen(Screen):
         self.err        = None
         self._task      = None
         self._leaving   = False
+        self.scan_count = 0                    # счётчик сканов для оптимизации отрисовки
 
         self.cb = Button(self.wri, CLOSE_BTN_Y, CLOSE_BTN_X, text='X',
-                         callback=self._on_close,
-                         width=CLOSE_BTN_W, height=CLOSE_BTN_H)
+                          callback=self._on_close,
+                          width=CLOSE_BTN_W, height=CLOSE_BTN_H)
         place_close_btn(self.cb)
 
         self.btn = Button(self.wri, SCREEN_H - _sy(46), (SCREEN_W - _sx(96)) // 2,
@@ -161,7 +163,11 @@ class RadioScannerScreen(Screen):
                 except Exception as e:
                     self.err = str(e)[:26]
                     error('radio_scanner scan:', e)
-                self._redraw_data()
+                # Обновляем график только раз в UPDATE_EVERY сканов
+                self.scan_count += 1
+                if self.scan_count >= UPDATE_EVERY:
+                    self.scan_count = 0
+                    self._redraw_data()
             await asyncio.sleep_ms(SCAN_GAP_MS)
 
     def _apply(self, nets):
