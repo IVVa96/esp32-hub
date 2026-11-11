@@ -21,12 +21,11 @@ from config import (
     KB_CELL_W, KB_CELL_H, KB_X,
     BG_COLOR,
     CLOSE_BTN_X, CLOSE_BTN_Y, CLOSE_BTN_W, CLOSE_BTN_H,
-    SCREEN_W, _sx, _sy,
+    SCREEN_W,
 )
 from apps.system.wifi.config import (
     WIFI_SCAN_INTERVAL_MS, WIFI_CONNECT_TIMEOUT_MS,
     WIFI_MAX_NETWORKS, WIFI_SAVED_MARKER,
-    WIFI_RSSI_NUM_W, WIFI_SEC_W,
     PW_Y_TITLE, PW_Y_SSID, PW_Y_INPUT, PW_Y_HINT, PW_KB_Y,
 )
 from core.ui import (
@@ -107,9 +106,9 @@ class WiFiScannerScreen(Screen):
         self.title_lbl = Label(self.wri, TITLE_Y, TITLE_X, TITLE_TEXT)
         title_w = self.wri.stringlen(TITLE_TEXT)
         lbl_x   = TITLE_X + title_w + STATUS_LBL_GAP
-        lbl_w   = ssd.width - lbl_x - _sx(40)
-        if lbl_w < _sx(20):
-            lbl_w = _sx(20)
+        lbl_w   = ssd.width - lbl_x - 40
+        if lbl_w < 20:
+            lbl_w = 20
         self.status_lbl = Label(self.wri, TITLE_Y, lbl_x, lbl_w, justify=1)
         self.status_lbl.value('Scan 0')
 
@@ -152,7 +151,7 @@ class WiFiScannerScreen(Screen):
             except Exception as e:
                 error("on_select:", e)
 
-        self.lb = Listbox(self.wri, LB_Y + _sy(5), LB_X, elements=self.els,
+        self.lb = Listbox(self.wri, LB_Y + 5, LB_X, elements=self.els,
                           dlines=LB_DLINES, width=LB_WIDTH,
                           bdcolor=LB_BORDER_COLOR, callback=on_select)
 
@@ -359,17 +358,19 @@ class WiFiScannerScreen(Screen):
         try:
             self.els.clear()
             inner  = LB_WIDTH - 4
-            rssi_n = WIFI_RSSI_NUM_W
-            sec_w  = WIFI_SEC_W
-            saved_w = (self.wri.stringlen(WIFI_SAVED_MARKER) + _sx(4)
+            # Ширины колонок RSSI и типа защиты — фиксированные пиксели
+            # (раньше это были константы из apps/system/wifi/config.py)
+            rssi_n = 32
+            sec_w  = 24
+            saved_w = (self.wri.stringlen(WIFI_SAVED_MARKER) + 4
                        if WIFI_SAVED_MARKER else 0)
             rssi_w  = rssi_n + self.wri.stringlen('dB')
             fixed   = (self.wri.stringlen(' ') + sec_w +
                        self.wri.stringlen(' ') + saved_w +
                        self.wri.stringlen(' '))
             ssid_w = inner - rssi_w - fixed
-            if ssid_w < _sx(30):
-                ssid_w = _sx(30)
+            if ssid_w < 30:
+                ssid_w = 30
 
             for ssid, rssi, authmode in self.networks:
                 try:
@@ -583,9 +584,9 @@ class WiFiConnectingScreen(Screen):
         def _noop(*_a, **_k):
             pass
 
-        _by  = ssd.height - _sy(30)
-        _bh  = _sy(22)
-        _gap = _sx(6)
+        _by  = ssd.height - 30
+        _bh  = 22
+        _gap = 6
         _bw  = (SCREEN_W - 2 * CS_MARGIN - _gap) // 2
         _x1  = CS_MARGIN
         _x2  = CS_MARGIN + _bw + _gap
@@ -637,8 +638,8 @@ class WiFiConnectingScreen(Screen):
             pass
 
         try:
-            _by = ssd.height - _sy(30)
-            _bh = _sy(22)
+            _by = ssd.height - 30
+            _bh = 22
             ssd.fill_rect(0, _by - 2, SCREEN_W, _bh + 4, BG_COLOR)
         except Exception:
             pass
@@ -844,7 +845,7 @@ class WiFiConnectingScreen(Screen):
         Label(self.wri, CS_Y_STATUS, CS_MARGIN, 'Reason:')
 
         top       = CS_Y_STATUS + LINE_H
-        max_lines = max(1, (ssd.height - top - _sy(90)) // LINE_H)
+        max_lines = max(1, (ssd.height - top - 90) // LINE_H)
         lines     = self._wrap(reason, max_lines)
         for j, line in enumerate(lines):
             Label(self.wri, top + j * LINE_H, CS_MARGIN, line)
@@ -887,9 +888,17 @@ class WiFiConnectingScreen(Screen):
         except Exception:
             pass
         wifi_state.clear()
+        # "Scan again" всегда возвращает в сканер. Экран подключения мог быть
+        # открыт через экран пароля: тогда self.parent — пароль, а не список
+        # сетей, и раньше обе кнопки вели в ввод пароля. Поднимаемся по цепочке
+        # родителей до живого экземпляра сканера и прыгаем к нему (Screen.BACK),
+        # чтобы не плодить копии в стеке.
+        tgt = self.parent
+        while tgt is not None and not isinstance(tgt, WiFiScannerScreen):
+            tgt = getattr(tgt, 'parent', None)
         await wait_release_all()
         await asyncio.sleep_ms(200)
-        _exit_to(self.parent)
+        _exit_to(tgt)
 
     async def _do_enter_pwd(self):
         WiFiPasswordScreen.target   = self.target

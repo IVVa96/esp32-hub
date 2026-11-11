@@ -19,12 +19,10 @@ from config import (
     LINE_H, TEXT_W,
     BG_COLOR,
     CLOSE_BTN_X, CLOSE_BTN_Y, CLOSE_BTN_W, CLOSE_BTN_H,
-    _sx, _sy,
 )
 from apps.system.ble.config import (
     BLE_SCAN_MS, BLE_SCAN_PAUSE_MS, BLE_CONNECT_TIMEOUT,
     BLE_MAX_DEVICES, BLE_RADIO_SETTLE_MS,
-    BLE_NAME_W, BLE_ADDR_W, BLE_RSSI_NUM_W,
 )
 from core.ui import (
     make_writer, place_close_btn, wait_release_all, delayed_focus,
@@ -86,9 +84,9 @@ class ScannerScreen(Screen):
         self.title_lbl = Label(self.wri, TITLE_Y, TITLE_X, TITLE_TEXT)
         title_w = self.wri.stringlen(TITLE_TEXT)
         lbl_x   = TITLE_X + title_w + STATUS_LBL_GAP
-        lbl_w   = ssd.width - lbl_x - _sx(40)
-        if lbl_w < _sx(20):
-            lbl_w = _sx(20)
+        lbl_w   = ssd.width - lbl_x - 40
+        if lbl_w < 20:
+            lbl_w = 20
         self.scan_lbl = Label(self.wri, TITLE_Y, lbl_x, lbl_w, justify=1)
         self.scan_lbl.value('Scan 0')
 
@@ -114,7 +112,7 @@ class ScannerScreen(Screen):
             except Exception as e:
                 error("on_select:", e)
 
-        self.lb = Listbox(self.wri, LB_Y + _sy(5), LB_X, elements=self.els,
+        self.lb = Listbox(self.wri, LB_Y + 5, LB_X, elements=self.els,
                           dlines=LB_DLINES, width=LB_WIDTH,
                           bdcolor=LB_BORDER_COLOR, callback=on_select)
 
@@ -273,12 +271,14 @@ class ScannerScreen(Screen):
         try:
             self.els.clear()
             inner  = LB_WIDTH - 4
-            name_w = BLE_NAME_W
-            addr_w = BLE_ADDR_W
-            rssi_n = BLE_RSSI_NUM_W
-            name_w = min(name_w, inner - addr_w - rssi_n - _sx(4))
-            if name_w < _sx(20):
-                name_w = _sx(20)
+            # Ширины колонок списка устройств — фиксированные пиксели
+            # (раньше это были константы из apps/system/ble/config.py)
+            name_w = 100
+            addr_w = 120
+            rssi_n = 38
+            name_w = min(name_w, inner - addr_w - rssi_n - 4)
+            if name_w < 20:
+                name_w = 20
 
             for addr, name, rssi, _ in self.devices:
                 nm = name[:12]
@@ -319,19 +319,20 @@ class ConnectingScreen(Screen):
             def _noop(*_a, **_k):
                 pass
             self.retry_btn = Button(
-                self.wri, ssd.height - _sy(30), CS_MARGIN,
+                self.wri, ssd.height - 30, CS_MARGIN,
                 text=' ', callback=_noop,
-                width=_sx(80), height=_sy(20))
+                width=80, height=20)
             self._retry_btn_show = self.retry_btn.show
             try:
                 self.retry_btn.show = lambda *_a, **_k: None
             except Exception:
                 pass
             try:
-                ssd.fill_rect(CS_MARGIN - 1, ssd.height - _sy(32),
-                              _sx(84), _sy(24), BG_COLOR)
+                ssd.fill_rect(CS_MARGIN - 1, ssd.height - 32,
+                              84, 24, BG_COLOR)
             except Exception:
                 pass
+            self._add_close_btn()
             return
 
         addr, name, rssi, dev = self.target
@@ -347,20 +348,34 @@ class ConnectingScreen(Screen):
             pass
 
         self.retry_btn = Button(
-            self.wri, ssd.height - _sy(30), CS_MARGIN,
+            self.wri, ssd.height - 30, CS_MARGIN,
             text=' Scan again ', callback=_noop,
-            width=self.wri.stringlen(' Scan again '), height=_sy(20))
+            width=self.wri.stringlen(' Scan again '), height=20)
         self._retry_btn_show = self.retry_btn.show
         try:
             self.retry_btn.show = lambda *_a, **_k: None
         except Exception:
             pass
         try:
-            ssd.fill_rect(CS_MARGIN - 1, ssd.height - _sy(32),
+            ssd.fill_rect(CS_MARGIN - 1, ssd.height - 32,
                           self.wri.stringlen(' Scan again ') + 4,
-                          _sy(24), BG_COLOR)
+                          24, BG_COLOR)
         except Exception:
             pass
+
+        self._add_close_btn()
+
+    def _add_close_btn(self):
+        # Кнопка выхода: экран подключения без неё — тупик. Раньше при
+        # любом исходе (ошибка, UNKNOWN, успешное подключение) выйдти
+        # было нельзя, экран выглядел «зависшим».
+        def _on_close(*_a, **_k):
+            asyncio.create_task(self._do_back())
+
+        self.cb = Button(self.wri, CLOSE_BTN_Y, CLOSE_BTN_X, text='X',
+                         callback=_on_close,
+                         width=CLOSE_BTN_W, height=CLOSE_BTN_H)
+        place_close_btn(self.cb)
 
     def after_open(self):
         try:
@@ -441,12 +456,24 @@ class ConnectingScreen(Screen):
             await asyncio.sleep_ms(1500)
 
             self._status('Connecting...')
+            # После неуспешной/прерванной попытки aioble оставляет в
+            # device._connection «полусоединение» (_conn_handle=None).
+            # Следующий connect() сразу вернул бы этот мёртвый объект
+            # и всё дальнейшее зависло бы. Чистим перед новой попыткой.
+            stale = getattr(device, '_connection', None)
+            if stale is not None and not stale.is_connected():
+                device._connection = None
             self.connection = await device.connect(timeout_ms=BLE_CONNECT_TIMEOUT)
 
             self._status('Discovering...')
             services = []
             try:
-                disc = await self.connection.services()
+                # В vendored aioble services() возвращает async-итератор
+                # (ClientDiscover), у него нет __await__. Прежний
+                # `await ...services()` кидал TypeError, он молча
+                # ловился, сервисы терялись и любое устройство
+                # классифицировалось как 'UNKNOWN'.
+                disc = self.connection.services()
             except Exception as e:
                 error("services():", type(e).__name__, e)
                 disc = None
@@ -462,12 +489,16 @@ class ConnectingScreen(Screen):
                     pass
                 if not services:
                     try:
-                        async for s in disc:
-                            services.append(s)
-                    except TypeError:
-                        pass
+                        # Сбор сервисов под жёстким таймаутом: внутри
+                        # ClientDiscover таймаут не реализован (TODO в
+                        # aioble), подвисший discovery держал бы экран
+                        # на 'Discovering...' навсегда.
+                        async def _collect():
+                            async for s in disc:
+                                services.append(s)
+                        await asyncio.wait_for(_collect(), 3.0)
                     except Exception as e:
-                        verbose("async for disc:", type(e).__name__, e)
+                        verbose("collect services:", type(e).__name__, e)
                 if not services:
                     try:
                         services = list(disc)
@@ -495,7 +526,9 @@ class ConnectingScreen(Screen):
             conn_state.ble_connected = True
             conn_state.ble_rssi      = rssi
 
-            self._status('{}'.format(dtype))
+            # 'UNKNOWN' на экране выглядит как ошибка подключения:
+            # если устройство не распознано, показываем просто 'Connected'.
+            self._status(dtype if dtype != 'UNKNOWN' else 'Connected')
             redraw_status_bar()
 
         except asyncio.CancelledError:
@@ -523,7 +556,7 @@ class ConnectingScreen(Screen):
         Label(self.wri, CS_Y_STATUS, CS_MARGIN, 'Reason:')
 
         top       = CS_Y_STATUS + LINE_H
-        max_lines = max(1, (ssd.height - top - _sy(40)) // LINE_H)
+        max_lines = max(1, (ssd.height - top - 40) // LINE_H)
         lines     = self._wrap(reason, max_lines)
         for j, line in enumerate(lines):
             Label(self.wri, top + j * LINE_H, CS_MARGIN, line)
@@ -541,6 +574,12 @@ class ConnectingScreen(Screen):
         except Exception as e:
             error("retry_btn show:", e)
 
+        # ssd.fill(0) выше стёр и кнопку X — перерисовываем
+        try:
+            self.cb.show()
+        except Exception:
+            pass
+
         asyncio.create_task(delayed_focus(self.retry_btn))
 
     async def _do_retry(self):
@@ -552,6 +591,14 @@ class ConnectingScreen(Screen):
             ble_state.clear()
         await wait_release_all()
         await asyncio.sleep_ms(400)
+        Screen.change(ScannerScreen)
+
+    async def _do_back(self):
+        # Выход по кнопке X: возвращаемся в сканер (REPLACE, как и
+        # 'Scan again'). Если подключение ещё устанавливается, задачу
+        # погасит on_hide() (через _aborting_task).
+        await wait_release_all()
+        await asyncio.sleep_ms(80)
         Screen.change(ScannerScreen)
 
     def _wrap(self, text, max_lines):

@@ -51,35 +51,32 @@ def _get_glyph(ch):
 
 
 class _RotSSD:
-    def __init__(self, ssd, rotation, landscape):
-        self._ssd       = ssd
-        self._rot       = rotation % 360
-        self._landscape = landscape
-        if landscape:
-            self.width  = 320
-            self.height = 240
+    def __init__(self, ssd, rotation):
+        self._ssd = ssd
+        self._rot = rotation % 360
+        # База — горизонтальный экран 320x240. При повороте на 90/270
+        # виртуальный холст становится портретным 240x320.
+        if self._rot in (90, 270):
+            self.width  = ssd.height
+            self.height = ssd.width
         else:
-            self.width  = 240
-            self.height = 320
+            self.width  = ssd.width
+            self.height = ssd.height
 
     def _point(self, x, y):
         r = self._rot
-        if not self._landscape:
-            if r == 0:   return x, y
-            if r == 180: return self.width - 1 - x, self.height - 1 - y
-        else:
-            if r == 90:  return self.width - 1 - y, x
-            if r == 270: return y, self.height - 1 - x
+        pw, ph = self._ssd.width, self._ssd.height
+        if r == 90:  return y, ph - 1 - x
+        if r == 180: return pw - 1 - x, ph - 1 - y
+        if r == 270: return pw - 1 - y, x
         return x, y
 
     def _rect(self, x, y, w, h):
         r = self._rot
-        if not self._landscape:
-            if r == 0:   return x, y, w, h
-            if r == 180: return self.width - x - w, self.height - y - h, w, h
-        else:
-            if r == 90:  return self.width - y - h, x, h, w
-            if r == 270: return y, self.height - x - w, h, w
+        pw, ph = self._ssd.width, self._ssd.height
+        if r == 90:  return y, ph - x - w, h, w
+        if r == 180: return pw - x - w, ph - y - h, w, h
+        if r == 270: return pw - y - h, x, h, w
         return x, y, w, h
 
     def fill(self, c):
@@ -95,14 +92,14 @@ class _RotSSD:
         self._ssd.line(a[0], a[1], b[0], b[1], c)
 
     def hline(self, x, y, w, c):
-        if self._rot == 0 and not self._landscape:
+        if self._rot == 0:
             self._ssd.hline(x, y, w, c)
             return
         rx, ry, rw, rh = self._rect(x, y, w, 1)
         self._ssd.fill_rect(rx, ry, rw, rh, c)
 
     def vline(self, x, y, h, c):
-        if self._rot == 0 and not self._landscape:
+        if self._rot == 0:
             self._ssd.vline(x, y, h, c)
             return
         rx, ry, rw, rh = self._rect(x, y, 1, h)
@@ -126,18 +123,18 @@ class _RotSSD:
 
     def ellipse(self, cx, cy, xr, yr, c):
         px, py = self._point(cx, cy)
-        if self._landscape:
+        if self._rot in (90, 270):
             xr, yr = yr, xr
         self._ssd.ellipse(px, py, xr, yr, c)
 
     def fill_ellipse(self, cx, cy, xr, yr, c):
         px, py = self._point(cx, cy)
-        if self._landscape:
+        if self._rot in (90, 270):
             xr, yr = yr, xr
         self._ssd.fill_ellipse(px, py, xr, yr, c)
 
     def text(self, s, x, y, c):
-        if self._rot == 0 and not self._landscape:
+        if self._rot == 0:
             self._ssd.text(s, x, y, c)
             return
         for i, ch in enumerate(s):
@@ -188,17 +185,12 @@ class ClockScreen(Screen):
             error("host:", e)
             self._host = None
 
-    def _landscape(self):
-        return ClockScreen._rotation in (90, 270)
-
     def _target(self):
         r = ClockScreen._rotation
         if r == 0:
             return ssd
-        landscape = self._landscape()
-        key = (r, landscape)
-        if self._rot_cache is None or self._rot_cache[0] != key:
-            self._rot_cache = (key, _RotSSD(ssd, r, landscape))
+        if self._rot_cache is None or self._rot_cache[0] != r:
+            self._rot_cache = (r, _RotSSD(ssd, r))
         return self._rot_cache[1]
 
     def _get_time(self):
@@ -229,7 +221,7 @@ class ClockScreen(Screen):
             return
         self._last_draw = key
 
-        landscape = self._landscape()
+        landscape = ClockScreen._rotation in (0, 180)
         fn = None
         if landscape:
             fn = getattr(mod, 'draw_face_h', None)

@@ -9,13 +9,13 @@ import sys
 from gui.core.ugui import ssd, Screen
 from gui.core.colors import BLACK, WHITE, AMBER, DIM
 
-from config import SCREEN_W, STATUS_BAR_ENABLED
+from config import SCREEN_W, STATUS_BAR_ENABLED, FOOTER_Y
 from version import __version__
 from core.ui import make_writer, redraw_status_bar, wait_release_all
 from core.logger import error
 from core.pixel_ui import (
     PixelMenu, PixelClose, header, footer, screen_bg,
-    big_c, text_c, text, text_r, fill, frame, MARGIN,
+    big, text_c, text, text_r, fill, frame, MARGIN,
 )
 import core.status_bar as status_bar
 import core.shutdown   as shutdown
@@ -36,38 +36,15 @@ def _scan_apps():
 APPS = _scan_apps()
 
 
-def _fw_versions():
-    """Реальная версия MicroPython и дата сборки прошивки."""
-    release = ''
-    build = ''
+def _fw_release():
+    """Версия прошивки MicroPython."""
     try:
-        u = os.uname()
-        release = getattr(u, 'release', '') or ''
-        ver = getattr(u, 'version', '') or ''
-        marker = ' on '
-        pos = ver.find(marker)
-        if pos >= 0:
-            tail = ver[pos + len(marker):]
-            semi = tail.find(';')
-            build = tail if semi < 0 else tail[:semi]
+        return os.uname().release
     except Exception:
-        pass
-    return release, build
+        return ''
 
 
-_FW_RELEASE, _FW_BUILD = _fw_versions()
-
-
-def _draw_fw_info():
-    """Нижний блок лаунчера: версия прошивки вместо декоративной подписи."""
-    ssd.hline(MARGIN, 238, SCREEN_W - 2 * MARGIN, DIM)
-    text('MICROPYTHON', MARGIN, 246, DIM)
-    text_r(_FW_RELEASE or '?', SCREEN_W - MARGIN, 246, WHITE)
-    if _FW_BUILD:
-        text('BUILD', MARGIN, 258, DIM)
-        text_r(_FW_BUILD, SCREEN_W - MARGIN, 258, DIM)
-    text('HUB', MARGIN, 270, DIM)
-    text_r('v' + __version__, SCREEN_W - MARGIN, 270, WHITE)
+_FW_RELEASE = _fw_release()
 
 
 def _load_screen(module_path):
@@ -85,39 +62,33 @@ class LauncherScreen(Screen):
         self._busy = False
         self.wri = make_writer()
 
-        big_c('ESP32', 20, 2, AMBER)
-        big_c('HUB', 38, 2, WHITE)
-
-        y = 20 + 36
-        ssd.hline(MARGIN, y, SCREEN_W - 2 * MARGIN, AMBER)
-        ssd.fill_rect(MARGIN - 4, y - 1, 3, 3, AMBER)
-        ssd.fill_rect(SCREEN_W - MARGIN + 1, y - 1, 3, 3, AMBER)
-        text_c('// SELECT INTERFACE', y + 8, DIM)
-
         self.menu = PixelMenu(
             self.wri,
             ('WEB UI', 'CLASSIC UI', 'POWER OFF'),
-            top=84, row_h=44, gap=6, kind='cards',
+            top=60, row_h=38, gap=4, kind='cards',
             on_select=self._pick,
         )
 
-        # нижняя информационная строка
-        _draw_fw_info()
+    def _draw_layout(self):
+        """Статическая компоновка лаунчера (320x240)."""
+        screen_bg()
+        x = (SCREEN_W - len('ESP32 HUB') * 8 * 2) // 2
+        w = big('ESP32 ', x, 18, 2, AMBER)
+        big('HUB', x + w, 18, 2, WHITE)
 
+        y = 38
+        ssd.hline(MARGIN, y, SCREEN_W - 2 * MARGIN, AMBER)
+        ssd.fill_rect(MARGIN - 4, y - 1, 3, 3, AMBER)
+        ssd.fill_rect(SCREEN_W - MARGIN + 1, y - 1, 3, 3, AMBER)
+        text_c('// SELECT INTERFACE', 46, DIM)
+
+        text('HUB v' + __version__, MARGIN, 192, WHITE)
+        text_r(_FW_RELEASE or '?', SCREEN_W - MARGIN, 192, DIM)
         footer('UP/DN', 'MOVE', 'SEL', 'OK')
 
     def after_open(self):
         self._busy = False
-        screen_bg()
-        big_c('ESP32', 20, 2, AMBER)
-        big_c('HUB', 38, 2, WHITE)
-        y = 56
-        ssd.hline(MARGIN, y, SCREEN_W - 2 * MARGIN, AMBER)
-        ssd.fill_rect(MARGIN - 4, y - 1, 3, 3, AMBER)
-        ssd.fill_rect(SCREEN_W - MARGIN + 1, y - 1, 3, 3, AMBER)
-        text_c('// SELECT INTERFACE', y + 8, DIM)
-        _draw_fw_info()
-        footer('UP/DN', 'MOVE', 'SEL', 'OK')
+        self._draw_layout()
         redraw_status_bar()
         try:
             self.move_to(self.menu)
@@ -170,18 +141,14 @@ class MenuScreen(Screen):
         self.wri = make_writer()
         ssd.fill(0)
 
-        header('CLASSIC UI', '// SELECT APPLICATION')
-
         self._names = [a[0] for a in APPS]
         els = [n.replace('_', ' ').upper() for n in self._names] or ['NO APPS']
 
         self.menu = PixelMenu(
-            self.wri, els, top=84, row_h=24, gap=3, kind='rows',
+            self.wri, els, top=60, row_h=22, gap=3, kind='rows',
             on_select=self._on_select,
         )
         self.cb = PixelClose(self.wri, 20, SCREEN_W - 36, self._on_close)
-
-        footer('UP/DN', 'MOVE', 'SEL', 'OK')
 
     def after_open(self):
         screen_bg()
@@ -194,7 +161,7 @@ class MenuScreen(Screen):
             pass
         self.cb.show()
         ey = self.menu.top + len(APPS) * (self.menu.row_h + self.menu.gap)
-        if ey < 268:
+        if ey < FOOTER_Y - 8:
             text('// END OF LIST', MARGIN + 4, ey + 2, DIM)
 
     def _on_select(self, idx):

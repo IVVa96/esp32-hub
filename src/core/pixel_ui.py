@@ -8,7 +8,7 @@ import framebuf
 
 from gui.core.ugui import Screen, Widget, ssd
 from gui.core.colors import BLACK, WHITE, AMBER, DIM, RED
-from config import SCREEN_W, SCREEN_H, STATUS_BAR_H
+from config import SCREEN_W, SCREEN_H, STATUS_BAR_H, FOOTER_Y
 
 
 CW = 8          # ширина символа
@@ -81,7 +81,7 @@ def keycap(x, y, label, fg=WHITE, bd=DIM):
 
 
 def footer(left_key, left_txt, right_key, right_txt):
-    y = 286
+    y = FOOTER_Y
     w = keycap(MARGIN, y, left_key)
     text(left_txt, MARGIN + w + 6, y + 3, DIM)
 
@@ -125,7 +125,7 @@ class PixelMenu(Widget):
         self.on_select = on_select
         self.idx = start
         self.ntop = 0
-        self.nvis = max(1, (SCREEN_H - top - 40) // (row_h + gap))
+        self.nvis = max(1, (FOOTER_Y - top - 2) // (row_h + gap))
         if self.nvis > len(self.items):
             self.nvis = len(self.items)
         height = self.nvis * (row_h + gap)

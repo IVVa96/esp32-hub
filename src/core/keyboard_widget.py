@@ -6,26 +6,26 @@ from gui.core.ugui import ssd
 from gui.core.colors import *
 from config import (
     KEY_BG, KEY_FG, KEY_BORDER, HIGHLIGHT_BG, HIGHLIGHT_FG,
-    _sy,
+    KB_CELL_W,
 )
 import asyncio
 import hardware_setup
 
 
 DEFAULT_LAYOUT = [
-    ([('1',1),('2',1),('3',1),('4',1),('5',1),('6',1),('7',1),('8',1),('9',1),('0',1)], _sy(26)),
-    ([('q',1),('w',1),('e',1),('r',1),('t',1),('y',1),('u',1),('i',1),('o',1),('p',1)], _sy(26)),
-    ([('a',1),('s',1),('d',1),('f',1),('g',1),('h',1),('j',1),('k',1),('l',1),('-',1)], _sy(26)),
-    ([('CL',1.5),('z',1),('x',1),('c',1),('v',1),('b',1),('n',1),('m',1),('Bs',1.5)], _sy(30)),
-    ([('Sh',2),('.',1),('_',1),('@',1),('!',1),('#',1),('$',1),('%',1),('&',1)], _sy(30)),
-    ([('Sp',6),('OK',2),('Cancel',2)], _sy(32)),
+    ([('1',1),('2',1),('3',1),('4',1),('5',1),('6',1),('7',1),('8',1),('9',1),('0',1)], 26),
+    ([('q',1),('w',1),('e',1),('r',1),('t',1),('y',1),('u',1),('i',1),('o',1),('p',1)], 26),
+    ([('a',1),('s',1),('d',1),('f',1),('g',1),('h',1),('j',1),('k',1),('l',1),('-',1)], 26),
+    ([('CL',1.5),('z',1),('x',1),('c',1),('v',1),('b',1),('n',1),('m',1),('Bs',1.5)], 30),
+    ([('Sh',2),('.',1),('_',1),('@',1),('!',1),('#',1),('$',1),('%',1),('&',1)], 30),
+    ([('Sp',6),('OK',2),('Cancel',2)], 32),
 ]
 
 ROW_SAVED = len(DEFAULT_LAYOUT)
 
-ROW_GAP   = _sy(2)
-SAVED_GAP = _sy(4)
-SAVED_H   = _sy(34)
+ROW_GAP   = 2
+SAVED_GAP = 2
+SAVED_H   = 24
 
 POLL_MS = 30
 
@@ -40,7 +40,7 @@ class _HiddenHost(Button):
 
 class Keyboard:
     def __init__(self, writer, row, col,
-                 layout=None, cell_w=22, cell_h=None, callback=None,
+                 layout=None, cell_w=KB_CELL_W, cell_h=None, callback=None,
                  show_saved=True):
         if layout is None:
             layout = DEFAULT_LAYOUT

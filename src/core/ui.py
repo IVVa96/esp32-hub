@@ -7,7 +7,6 @@ from gui.core.ugui import ssd, Screen
 from gui.core.writer import CWriter
 from config import (
     FONT, TEXT_COLOR, BG_COLOR, CLOSE_BTN_Y,
-    _sx, _sy, _sm,
 )
 
 
@@ -124,18 +123,3 @@ def pad_left_num(wri, s, width_px):
         return s
     n = (width_px - cur) // sp
     return ' ' * n + s if n > 0 else s
-
-
-# ======================================================================
-# Масштабирование координат
-# ======================================================================
-def sx(v):
-    return _sx(v)
-
-
-def sy(v):
-    return _sy(v)
-
-
-def sm(v):
-    return _sm(v)

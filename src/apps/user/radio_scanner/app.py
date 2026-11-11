@@ -20,7 +20,7 @@ from gui.core.colors import AMBER, DIM, GREEN, RED, WHITE, BLACK, PANEL
 from config import (
     TITLE_Y, TITLE_X, STATUS_BAR_H,
     CLOSE_BTN_X, CLOSE_BTN_Y, CLOSE_BTN_W, CLOSE_BTN_H,
-    SCREEN_W, SCREEN_H, _sx, _sy,
+    SCREEN_W, SCREEN_H,
 )
 from core.ui import (
     make_writer, place_close_btn, wait_release_all, redraw_status_bar,
@@ -42,10 +42,10 @@ PEAK_DECAY  = 2.0            # спад пика, % за обновление
 UPDATE_EVERY = 5             # обновлять график каждые N сканов (для скорости)
 
 # ---- Геометрия графика ----
-GX   = _sx(8)
+GX   = 8
 GW   = SCREEN_W - 2 * GX
-GY   = TITLE_Y + _sy(30)
-GH   = _sy(150)
+GY   = TITLE_Y + 24
+GH   = 120
 GBASE = GY + GH
 BAR_W = max(4, (GW - 2) // CH_COUNT - 3)
 STEP  = (GW - 2) // CH_COUNT
@@ -88,9 +88,9 @@ class RadioScannerScreen(Screen):
                           width=CLOSE_BTN_W, height=CLOSE_BTN_H)
         place_close_btn(self.cb)
 
-        self.btn = Button(self.wri, SCREEN_H - _sy(46), (SCREEN_W - _sx(96)) // 2,
+        self.btn = Button(self.wri, SCREEN_H - 26, (SCREEN_W - 96) // 2,
                           text='STOP', callback=self._on_toggle,
-                          width=_sx(96), height=_sy(28))
+                          width=96, height=22)
         # Первой кнопке даём фокус энкодера.
         try:
             self.selected_obj = len(self.lstactive) - 1
@@ -198,7 +198,7 @@ class RadioScannerScreen(Screen):
     def _draw_static(self):
         self.wri.set_textpos(ssd, TITLE_Y, TITLE_X)
         self.wri.printstring(TITLE_TEXT)
-        self.wri_dim.set_textpos(ssd, TITLE_Y + _sy(12), TITLE_X)
+        self.wri_dim.set_textpos(ssd, TITLE_Y + 12, TITLE_X)
         self.wri_dim.printstring(SUB_TEXT)
 
         # рамка графика
@@ -212,14 +212,14 @@ class RadioScannerScreen(Screen):
         # подписи каналов 1,3,5,7,9,11,13
         for ch in range(1, 14, 2):
             i = ch - CH_FIRST
-            self.wri_dim.set_textpos(ssd, GBASE + _sy(4),
+            self.wri_dim.set_textpos(ssd, GBASE + 4,
                                      GX + 2 + i * STEP)
             self.wri_dim.printstring(str(ch))
 
         # нижние подписи диапазона
-        self.wri_dim.set_textpos(ssd, GBASE + _sy(20), GX + 2)
+        self.wri_dim.set_textpos(ssd, GBASE + 16, GX + 2)
         self.wri_dim.printstring('2412 MHz')
-        self.wri_dim.set_textpos(ssd, GBASE + _sy(20), GX + GW - _sx(56))
+        self.wri_dim.set_textpos(ssd, GBASE + 16, GX + GW - 56)
         self.wri_dim.printstring('2472 MHz')
 
     def _redraw_data(self):
@@ -243,9 +243,9 @@ class RadioScannerScreen(Screen):
                 ssd.hline(bx, py, BAR_W, WHITE)
 
         # строка состояния под графиком
-        self.wri.set_textpos(ssd, GBASE + _sy(34), GX + 2)
+        self.wri.set_textpos(ssd, GBASE + 26, GX + 2)
         self.wri.printstring(' ' * 24)          # стираем старую строку
-        self.wri.set_textpos(ssd, GBASE + _sy(34), GX + 2)
+        self.wri.set_textpos(ssd, GBASE + 26, GX + 2)
         if self.err:
             self.wri.printstring('ERR ' + self.err)
         else:
@@ -261,7 +261,7 @@ class RadioScannerScreen(Screen):
                 self.wri.printstring('PK --')
 
         # вторая строка: количество AP
-        self.wri_dim.set_textpos(ssd, GBASE + _sy(46), GX + 2)
+        self.wri_dim.set_textpos(ssd, GBASE + 36, GX + 2)
         self.wri_dim.printstring('APs {}  sweep {}ms'.format(
             self.ap_count, SCAN_GAP_MS))
 

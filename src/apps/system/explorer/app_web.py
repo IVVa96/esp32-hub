@@ -63,7 +63,7 @@ class WebScreen(Screen):
         self._panel_key = None
 
         self.menu = PixelMenu(
-            self.wri, self._ITEMS, top=78, row_h=34, gap=6,
+            self.wri, self._ITEMS, top=56, row_h=32, gap=4,
             kind='rows', tags=self._TAGS, on_select=self._on_pick,
         )
         self.cb = PixelClose(self.wri, 20, SCREEN_W - 36, self._on_close)
@@ -94,17 +94,17 @@ class WebScreen(Screen):
         text(str(value)[:15], 100, y, color)
 
     def _draw_panel(self):
-        x, y, w, h = MARGIN, 166, SCREEN_W - 2 * MARGIN, 92
+        x, y, w, h = MARGIN, 132, SCREEN_W - 2 * MARGIN, 70
         fill(x, y, w, h, BLACK)
         frame(x, y, w, h, DIM)
-        text('STATUS', x + 8, y + 6, DIM)
+        text('STATUS', x + 8, y + 4, DIM)
 
-        self._panel_line(y + 24, 'MODE', self._mode, WHITE)
-        self._panel_line(y + 42, 'IP', self._ip, WHITE)
-        self._panel_line(y + 60, 'UI PASS', WEB_PASSWORD, AMBER)
+        self._panel_line(y + 16, 'MODE', self._mode, WHITE)
+        self._panel_line(y + 30, 'IP', self._ip, WHITE)
+        self._panel_line(y + 44, 'UI PASS', WEB_PASSWORD, AMBER)
         ap = (server.running() and
               server.STATUS.get('mode') == 'ap')
-        self._panel_line(y + 78, 'AP PASS',
+        self._panel_line(y + 58, 'AP PASS',
                          AP_PASSWORD if ap else '-',
                          AMBER if ap else DIM)
 

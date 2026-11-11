@@ -18,17 +18,13 @@ from config import (
     LB_Y, LB_X, LB_WIDTH, LB_DLINES, LB_BORDER_COLOR,
     KB_CELL_W, KB_CELL_H, KB_X,
     CLOSE_BTN_X, CLOSE_BTN_Y, CLOSE_BTN_W, CLOSE_BTN_H,
-    SCREEN_W, SCREEN_H, _sx, _sy,
+    SCREEN_W, SCREEN_H,
 )
 from apps.user.midi.config import (
     MIDI_DEFAULT_CHANNEL, MIDI_CC_GROUP_COLORS,
     MIDI_AVAILABLE_PINS, MIDI_ADC_PINS,
     MIDI_DEFAULT_PRESET,
-    MIDI_LB_DLINES, MIDI_LB_EXTRA,
-    PANEL_TOP_GAP, PANEL_TYPE_X, PANEL_TYPE_LBL_OFF,
-    PANEL_TYPE_W, PANEL_CC_X, PANEL_CC_OFF, PANEL_CC_W,
-    PANEL_CH_X, PANEL_CH_LBL_Y, PANEL_CH_LB_Y, PANEL_CH_W,
-    PRESET_BTN_W, PRESET_BTN_H, PRESET_BTN_GAP, PRESET_BTN_Y,
+    MIDI_LB_DLINES,
     PW_Y_TITLE, PW_Y_LABEL, PW_Y_INPUT, PW_Y_HINT, PW_KB_Y,
 )
 from apps.user.midi.utils import hw
@@ -43,6 +39,32 @@ from core.logger import error
 from core.pixel_ui import (
     header, footer, screen_bg, PixelMenu, PixelClose,
 )
+
+
+# ---- Геометрия панели редактирования ----
+# Фиксированные пиксели; раньше жили в apps/user/midi/config.py.
+# В config пользователь должен видеть только настройки, а не разметку.
+MIDI_LB_EXTRA       = 8     # дополнительный отступ списка под subtitle
+
+PANEL_TOP_GAP       = 16    # зазор между списком и панелью
+
+PANEL_TYPE_X        = 2     # колонка Type
+PANEL_TYPE_LBL_OFF  = 14
+PANEL_TYPE_W        = 95
+
+PANEL_CC_X          = 105   # колонка CC
+PANEL_CC_OFF        = 14
+PANEL_CC_W          = 36
+
+PANEL_CH_X          = PANEL_TYPE_X  # колонка Ch — под Type
+PANEL_CH_LBL_Y      = 40
+PANEL_CH_LB_Y       = 52
+PANEL_CH_W          = 50
+
+PRESET_BTN_W        = 74    # кнопки LIST / SAVE / SAVE AS
+PRESET_BTN_H        = 22
+PRESET_BTN_GAP      = 4
+PRESET_BTN_Y        = SCREEN_H - 28  # отступ кнопок от нижнего края
 
 
 _LONG_MS      = 1200
@@ -115,7 +137,7 @@ class _PinListbox(Listbox):
         wri = self.writer
         x_pin = self.col + 2
         x_type = x_pin + wri.stringlen('G00 ')
-        x_cc = x_type + _sx(80)
+        x_cc = x_type + 80
         x_ch = x_cc + wri.stringlen('CC 127  ')
         x_end = self.col + self.width - 2
         fg = self.fontcolor if self.fontcolor is not None else self.fgcolor
@@ -324,17 +346,17 @@ class MidiScreen(Screen):
         self._painted_rows = set()
 
         self.title_lbl = Label(
-            self.wri, TITLE_Y, TITLE_X, _sx(150))
+            self.wri, TITLE_Y, TITLE_X, 150)
         self.title_lbl.value('MIDI')
 
         self.preset_lbl = Label(
-            self.wri, TITLE_Y + _sy(14), TITLE_X, _sx(150))
+            self.wri, TITLE_Y + 14, TITLE_X, 150)
         self._update_title()
 
         # Индикатор режима работы справа в заголовке: USB / BLE wait / BLE ok
         self._mode_txt = None
         self.mode_lbl = Label(
-            self.wri, TITLE_Y, _sx(150), _sx(64), justify=2)
+            self.wri, TITLE_Y, 150, 64, justify=2)
         self._update_mode_label()
 
         self._elements = [self._row_text(p) for p in MIDI_AVAILABLE_PINS]
@@ -357,8 +379,8 @@ class MidiScreen(Screen):
             h4 = self.lb.height
         except AttributeError:
             h4 = MIDI_LB_DLINES * 13 + 2
-        panel_h  = _sy(75)
-        reserved = PRESET_BTN_H + _sy(16) + panel_h
+        panel_h  = 75
+        reserved = PRESET_BTN_H + 16 + panel_h
         max_y    = SCREEN_H - reserved - h4
 
         if lb_y_actual > max_y:
@@ -723,7 +745,7 @@ class MidiScreen(Screen):
         elif t == 'encB':
             letter, leg = self._pair_letter_and_leg(pin)
             t = 'enc{} {}'.format(letter, leg) if letter else 'enc? ?'
-        t_pad = pad_right(self.wri, t, _sx(80))
+        t_pad = pad_right(self.wri, t, 80)
         return 'G{:02d} {} CC {}  Ch {}'.format(
             pin, t_pad, cfg['cc'], cfg['channel'])
 
@@ -1930,11 +1952,11 @@ class PresetListScreen(Screen):
         self.els = list(self.names)
 
         self.title_lbl = Label(
-            self.wri, TITLE_Y, TITLE_X, _sx(150))
+            self.wri, TITLE_Y, TITLE_X, 150)
         self.title_lbl.value('PRESETS')
 
         self.lb = Listbox(
-            self.wri, LB_Y + _sy(5), LB_X,
+            self.wri, LB_Y + 5, LB_X,
             elements=self.els,
             dlines=LB_DLINES - 3,
             width=LB_WIDTH,
@@ -1949,22 +1971,22 @@ class PresetListScreen(Screen):
         def _on_select(*_a, **_k):
             asyncio.create_task(self._do_select())
 
-        _by = ssd.height - _sy(28)
+        _by = ssd.height - 28
         _bw = (LB_WIDTH - 2 * 4) // 3
         self.btn_delete = Button(
             self.wri, _by, LB_X,
             text='DELETE', callback=_on_delete,
-            width=_bw, height=_sy(22),
+            width=_bw, height=22,
         )
         self.btn_rename = Button(
             self.wri, _by, LB_X + _bw + 4,
             text='RENAME', callback=_on_rename,
-            width=_bw, height=_sy(22),
+            width=_bw, height=22,
         )
         self.btn_select = Button(
             self.wri, _by, LB_X + 2 * (_bw + 4),
             text='SELECT', callback=_on_select,
-            width=_bw, height=_sy(22),
+            width=_bw, height=22,
         )
 
         def _on_close(*_a, **_k):
@@ -2112,7 +2134,7 @@ class PresetSelectScreen(Screen):
         Label(self.wri, TITLE_Y, TITLE_X, 'SELECT PRESETS')
 
         self.lb = Listbox(
-            self.wri, LB_Y + _sy(5), LB_X,
+            self.wri, LB_Y + 5, LB_X,
             elements=self.els,
             dlines=LB_DLINES - 3,
             width=LB_WIDTH,
@@ -2125,17 +2147,17 @@ class PresetSelectScreen(Screen):
         def _on_delete(*_a, **_k):
             asyncio.create_task(self._do_delete())
 
-        _by = ssd.height - _sy(28)
-        _bw = (LB_WIDTH - _sx(6)) // 2
+        _by = ssd.height - 28
+        _bw = (LB_WIDTH - 6) // 2
         self.btn_cancel = Button(
             self.wri, _by, LB_X,
             text='CANCEL', callback=_on_cancel,
-            width=_bw, height=_sy(22),
+            width=_bw, height=22,
         )
         self.btn_delete = Button(
-            self.wri, _by, LB_X + _bw + _sx(6),
+            self.wri, _by, LB_X + _bw + 6,
             text='DELETE', callback=_on_delete,
-            width=_bw, height=_sy(22),
+            width=_bw, height=22,
         )
 
         def _on_close(*_a, **_k):
@@ -2234,13 +2256,13 @@ class PresetConfirmDeleteScreen(Screen):
         names = getattr(MidiScreen, '_presets_confirm_delete', []) or []
 
         Label(self.wri, TITLE_Y, TITLE_X, 'DELETE')
-        Label(self.wri, TITLE_Y + _sy(20), CS_MARGIN,
+        Label(self.wri, TITLE_Y + 20, CS_MARGIN,
               'Delete {} preset(s)?'.format(len(names)))
         if names:
             preview = ', '.join(names[:3])
             if len(names) > 3:
                 preview += '…'
-            Label(self.wri, TITLE_Y + _sy(36), CS_MARGIN, preview)
+            Label(self.wri, TITLE_Y + 36, CS_MARGIN, preview)
 
         def _no(*_a, **_k):
             asyncio.create_task(self._do_back_no())
@@ -2248,16 +2270,16 @@ class PresetConfirmDeleteScreen(Screen):
             asyncio.create_task(self._do_yes())
 
         _by = ssd.height // 2
-        _bw = (LB_WIDTH - _sx(6)) // 2
+        _bw = (LB_WIDTH - 6) // 2
         self.btn_no = Button(
             self.wri, _by, LB_X,
             text='NO', callback=_no,
-            width=_bw, height=_sy(28),
+            width=_bw, height=28,
         )
         self.btn_yes = Button(
-            self.wri, _by, LB_X + _bw + _sx(6),
+            self.wri, _by, LB_X + _bw + 6,
             text='YES', callback=_yes,
-            width=_bw, height=_sy(28),
+            width=_bw, height=28,
         )
 
     def after_open(self):
